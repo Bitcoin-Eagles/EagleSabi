@@ -1,7 +1,7 @@
 using NBitcoin;
 using WalletWasabi.EventSourcing.Interfaces;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Events
+namespace WalletWasabi.Domains.Arena.Events
 {
 	public record InputUnregistered(OutPoint AliceOutPoint) : IEvent;
 }

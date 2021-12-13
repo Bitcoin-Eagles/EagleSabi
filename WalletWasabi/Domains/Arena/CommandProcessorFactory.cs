@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using WalletWasabi.EventSourcing.ArenaDomain.Aggregates;
-using WalletWasabi.EventSourcing.ArenaDomain.CommandProcessor;
+using WalletWasabi.Domains.Arena.Aggregates;
+using WalletWasabi.Domains.Arena.CommandProcessor;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.Exceptions;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain
+namespace WalletWasabi.Domains.Arena
 {
 	internal class CommandProcessorFactory : ICommandProcessorFactory
 	{
