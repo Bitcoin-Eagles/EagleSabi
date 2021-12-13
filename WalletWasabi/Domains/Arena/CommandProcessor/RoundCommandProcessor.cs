@@ -4,13 +4,14 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using WalletWasabi.EventSourcing.ArenaDomain.Aggregates;
-using WalletWasabi.EventSourcing.ArenaDomain.Command;
-using WalletWasabi.EventSourcing.ArenaDomain.Events;
+using WalletWasabi.Domains.Arena.Aggregates;
+using WalletWasabi.Domains.Arena.Command;
+using WalletWasabi.Domains.Arena.Events;
+using WalletWasabi.EventSourcing;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.CommandProcessor
+namespace WalletWasabi.Domains.Arena.CommandProcessor
 {
 	public class RoundCommandProcessor : ICommandProcessor
 	{

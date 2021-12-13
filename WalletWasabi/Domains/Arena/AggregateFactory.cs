@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using WalletWasabi.EventSourcing.ArenaDomain.Aggregates;
+using WalletWasabi.Domains.Arena.Aggregates;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.Exceptions;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain
+namespace WalletWasabi.Domains.Arena
 {
 	public class AggregateFactory : IAggregateFactory
 	{

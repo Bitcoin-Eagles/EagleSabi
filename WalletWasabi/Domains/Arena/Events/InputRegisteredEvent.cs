@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 using NBitcoin;
 using WalletWasabi.Crypto;
 using WalletWasabi.EventSourcing.Interfaces;
+using WalletWasabi.WabiSabi.Backend.Rounds;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Events
+namespace WalletWasabi.Domains.Arena.Events
 {
-	public record OutputRegisteredEvent(Script Script, long CredentialAmount) : IEvent, IRoundClientEvent;
+	public record InputRegisteredEvent(Guid AliceSecret, Coin Coin, OwnershipProof OwnershipProof) : IEvent;
 }

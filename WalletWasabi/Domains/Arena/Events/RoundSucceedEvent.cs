@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using NBitcoin;
+using WalletWasabi.Domains.Arena.Interfaces;
 using WalletWasabi.EventSourcing.Interfaces;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Events
+namespace WalletWasabi.Domains.Arena.Events
 {
-	public record SignatureAddedEvent(OutPoint AliceOutPoint, WitScript WitScript) : IEvent, IRoundClientEvent;
+	public record RoundSucceedEvent() : IEvent, IRoundClientEvent;
 }
