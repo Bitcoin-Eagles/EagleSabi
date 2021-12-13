@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using WalletWasabi.Domains.Arena.Aggregates;
 using WalletWasabi.Domains.Arena.Command;
 using WalletWasabi.Domains.Arena.Events;
@@ -94,27 +89,13 @@ namespace WalletWasabi.Domains.Arena.CommandProcessor
 		public Result Process(ICommand command, IState state)
 		{
 			if (state is not RoundState2 roundState)
-			{
 				throw new ArgumentException($"State should be type of {nameof(RoundState2)}.", nameof(state));
-			}
+			return ProcessDynamic(command, roundState);
+		}
 
-			return command switch
-			{
-				StartRoundCommand cmd => Process(cmd, roundState),
-				RegisterInputCommand cmd => Process(cmd, roundState),
-				EndRoundCommand cmd => Process(cmd, roundState),
-				ConfirmInputConnectionCommand cmd => Process(cmd, roundState),
-				RemoveInputCommand cmd => Process(cmd, roundState),
-				RegisterOutputCommand cmd => Process(cmd, roundState),
-				StartOutputRegistrationCommand cmd => Process(cmd, roundState),
-				StartConnectionConfirmationCommand cmd => Process(cmd, roundState),
-				StartTransactionSigningCommand cmd => Process(cmd, roundState),
-				SucceedRoundCommand cmd => Process(cmd, roundState),
-				NotifyInputReadyToSignCommand cmd => Process(cmd, roundState),
-				AddSignatureCommand cmd => Process(cmd, roundState),
-
-				_ => throw new InvalidOperationException()
-			};
+		protected Result ProcessDynamic(dynamic command, RoundState2 state)
+		{
+			return Process(command, state);
 		}
 
 		private static ImmutableArray<IError>.Builder PrepareErrors()
