@@ -4,11 +4,11 @@ using System.Linq;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading.Tasks;
-using WalletWasabi.EventSourcing.ArenaDomain.Events;
+using WalletWasabi.Domains.Arena.Events;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Aggregates
+namespace WalletWasabi.Domains.Arena.Aggregates
 {
 	public class RoundAggregate : IAggregate
 	{

@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using WalletWasabi.Crypto;
-using WalletWasabi.EventSourcing.ArenaDomain.Aggregates;
+using WalletWasabi.Domains.Arena.Aggregates;
 using WalletWasabi.EventSourcing.Interfaces;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Command
+namespace WalletWasabi.Domains.Arena.Command
 {
 	public record StartRoundCommand(RoundParameters2 RoundParameters, Guid IdempotenceId) : ICommand;
 	public record RegisterInputCommand(Coin Coin, OwnershipProof OwnershipProof, Guid AliceSecret, Guid IdempotenceId) : ICommand;

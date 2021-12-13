@@ -11,7 +11,7 @@ using WalletWasabi.WabiSabi.Backend.Rounds;
 using WalletWasabi.WabiSabi.Crypto;
 using WalletWasabi.WabiSabi.Models.MultipartyTransaction;
 
-namespace WalletWasabi.EventSourcing.ArenaDomain.Aggregates
+namespace WalletWasabi.Domains.Arena.Aggregates
 {
 	public record RoundState2() : IState
 	{
