@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.Helpers;
@@ -19,12 +20,7 @@ namespace WalletWasabi.EventSourcing
 			Guard.NotNull(nameof(message), message);
 			if (Subscribers.TryGetValue(typeof(TMessage), out var subscribers))
 			{
-				foreach (var subscriber in subscribers)
-				{
-					// TODO: Don't stop on exception
-#warning aggregateExceptions
-					await subscriber.Invoke(message!).ConfigureAwait(false);
-				}
+				await subscribers.ForEachAggregateExceptionsAsync(a => a.Invoke(message!)).ConfigureAwait(false);
 			}
 		}
 
