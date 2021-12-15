@@ -1,4 +1,6 @@
+using System.Collections.Generic;
+
 namespace WalletWasabi.EventSourcing.Records
 {
-	public record UndeliveredEvent(string AggregateType, string AggregateId, WrappedEvent WrappedEvent);
+	public record AggregateUndeliveredEvents(string AggregateType, string AggregateId, IReadOnlyList<WrappedEvent> WrappedEvents);
 }

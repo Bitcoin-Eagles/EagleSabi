@@ -62,8 +62,8 @@ namespace WalletWasabi.EventSourcing.Interfaces
 		/// by <see cref="AppendEventsAsync(string, string, IEnumerable{WrappedEvent})"/>
 		/// and not yet marked as delivered by <see cref="MarkEventsAsDeliveredCumulative(string, string, long)"/>.
 		/// </summary>
-		/// <returns>list of <see cref="UndeliveredEvent"/>s</returns>
-		public Task<IReadOnlyList<UndeliveredEvent>> ListUndeliveredEventsAsync(int? count);
+		/// <returns>list of <see cref="AggregateUndeliveredEvents"/></returns>
+		public Task<IReadOnlyList<AggregateUndeliveredEvents>> ListUndeliveredEventsAsync(int? maxCount = null);
 
 		/// <summary>
 		/// Supplementary method for enumerating all ids for <paramref name="aggregateType"/>
