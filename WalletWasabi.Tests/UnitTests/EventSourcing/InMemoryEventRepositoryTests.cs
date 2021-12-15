@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
@@ -35,6 +36,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Assert
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
 				.SequenceEqual(events));
+			Assert.DoesNotContain(await EventRepository.ListUndeliveredEventsAsync(),
+				a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1");
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(Array.Empty<string>()));
 		}
@@ -53,6 +56,10 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 
 			// Assert
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+				.SequenceEqual(events));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.WrappedEvents
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "MY_ID_1" }));
@@ -73,6 +80,10 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 
 			// Assert
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+				.SequenceEqual(events));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.WrappedEvents
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "MY_ID_1" }));
@@ -161,6 +172,14 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				.SequenceEqual(events_a_0.Concat(events_a_1)));
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "b"))
 				.SequenceEqual(events_b_0.Concat(events_b_1)));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "a")
+				.WrappedEvents
+				.SequenceEqual(events_a_0.Concat(events_a_1)));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "b")
+				.WrappedEvents
+				.SequenceEqual(events_b_0.Concat(events_b_1)));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "a", "b" }));
 		}
@@ -188,6 +207,14 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				.SequenceEqual(events_a_0.Concat(events_a_1)));
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "b"))
 				.SequenceEqual(events_b_0));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "a")
+				.WrappedEvents
+				.SequenceEqual(events_a_0.Concat(events_a_1)));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "b")
+				.WrappedEvents
+				.SequenceEqual(events_b_0));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "a", "b" }));
 		}
@@ -210,6 +237,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(ActionAsync);
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
 				.Cast<TestWrappedEvent>().SequenceEqual(events1));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "MY_ID_1" }));
 		}
@@ -249,6 +279,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendInParallelAsync);
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
 						.Cast<TestWrappedEvent>().SequenceEqual(events1));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "MY_ID_1" }));
 		}
@@ -287,6 +320,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 
 			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
 						.Cast<TestWrappedEvent>().SequenceEqual(events1.Concat(events2)));
+			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1.Concat(events2)));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(new[] { "MY_ID_1" }));
 		}
@@ -302,10 +338,14 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events1);
 
 			// Act
-			IReadOnlyList<WrappedEvent> result = Array.Empty<WrappedEvent>().ToList().AsReadOnly();
+			IReadOnlyList<WrappedEvent> result = ImmutableList<WrappedEvent>.Empty;
+			IReadOnlyList<WrappedEvent> result2 = ImmutableList<WrappedEvent>.Empty;
 			void ListCallback()
 			{
 				result = EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1").Result;
+				result2 = EventRepository.ListUndeliveredEventsAsync().Result
+					.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+					.WrappedEvents;
 			}
 			switch (listOnCallback)
 			{
@@ -331,6 +371,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					break;
 			}
 			Assert.True(result.SequenceEqual(expected));
+			Assert.True(result2.SequenceEqual(expected));
 		}
 
 #endif
