@@ -33,7 +33,7 @@ namespace WalletWasabi.EventSourcing
 			ConcurrentDictionary<
 				// aggregateId
 				string,
-				AggregateEvents>> AggregatesEventsBatches
+				AggregateEvents>> AggregatesEvents
 		{ get; } = new();
 
 		private ConcurrentDictionary<
@@ -43,8 +43,8 @@ namespace WalletWasabi.EventSourcing
 		{ get; } = new();
 
 		private ConcurrentDictionary<
-			(string AggregateType, string AggregateId),
-			(long DeliveredSequenceId, long TailSequenceId)> UndeliveredSequenceIds
+			AggregateKey,
+			AggregateSequenceIds> UndeliveredSequenceIds
 		{ get; } = new();
 
 		/// <inheritdoc/>
@@ -71,7 +71,7 @@ namespace WalletWasabi.EventSourcing
 			if (lastSequenceId - firstSequenceId + 1 != wrappedEventsList.Count)
 				throw new ArgumentException("Event sequence ids are inconsistent.", nameof(wrappedEvents));
 
-			var aggregateEventsBatches = AggregatesEventsBatches.GetOrAdd(aggregateType, _ => new());
+			var aggregateEventsBatches = AggregatesEvents.GetOrAdd(aggregateType, _ => new());
 			var (tailSequenceId, events) = aggregateEventsBatches.GetOrAdd(
 				aggregateId,
 				_ => new AggregateEvents(0, ImmutableList<WrappedEvent>.Empty));
@@ -114,7 +114,7 @@ namespace WalletWasabi.EventSourcing
 		{
 			Guard.NotNull(nameof(aggregateType), aggregateType);
 			Guard.NotNull(nameof(aggregateId), aggregateId);
-			if (AggregatesEventsBatches.TryGetValue(aggregateType, out var aggregateEventsBatches) &&
+			if (AggregatesEvents.TryGetValue(aggregateType, out var aggregateEventsBatches) &&
 				aggregateEventsBatches.TryGetValue(aggregateId, out var value))
 			{
 				var result = value.Events;
@@ -146,6 +146,7 @@ namespace WalletWasabi.EventSourcing
 		/// <inheritdoc/>
 		public Task MarkEventsAsDeliveredCumulative(string aggregateType, string aggregateId, long deliveredSequenceId)
 		{
+			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
 			var conflict = false;
 			var prevDelieveredSequenceId = 0L;
@@ -155,34 +156,59 @@ namespace WalletWasabi.EventSourcing
 				conflict = false;
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
-				if (UndeliveredSequenceIds.TryGetValue((aggregateType, aggregateId), out var tuple))
+				var keyExists = false;
+				if (UndeliveredSequenceIds.TryGetValue(aggregateKey, out var tuple))
 				{
+					keyExists = true;
+
 					// If sequenceId is already marked as delivered we are done.
 					if (deliveredSequenceId <= tuple.DeliveredSequenceId)
 						return Task.CompletedTask;
 					prevDelieveredSequenceId = tuple.DeliveredSequenceId;
 					tailSequenceId = tuple.TailSequenceId;
 
-#warning TODO:
-					// TODO: validate deliveredSequenceId
-
 					// If all events have been delivered
 					if (tailSequenceId == deliveredSequenceId)
 					{
-						conflict = !UndeliveredSequenceIds.TryRemove(((aggregateType, aggregateId), (prevDelieveredSequenceId, tailSequenceId)));
+						conflict = !UndeliveredSequenceIds.TryRemove(
+							KeyValuePair.Create(
+								aggregateKey,
+								new AggregateSequenceIds(prevDelieveredSequenceId, tailSequenceId)));
+					}
+
+					// If some events remain to be delivered
+					else if (deliveredSequenceId < tailSequenceId)
+					{
+						conflict = !UndeliveredSequenceIds.TryUpdate(
+							key: aggregateKey,
+							newValue: new(deliveredSequenceId, tailSequenceId),
+							comparisonValue: new(prevDelieveredSequenceId, tailSequenceId));
+					}
+				}
+				// If MarkUndeliveredSequenceIds() hasn't been called yet
+				{
+					// If deliveredSequenceId is too high
+					if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
+						|| !aggregates.TryGetValue(aggregateId, out var aggregateEvents)
+						|| aggregateEvents.TailSequenceId < deliveredSequenceId)
+					{
+						throw new ArgumentException(
+							$"{nameof(deliveredSequenceId)} is greater than last appended event's SequenceId",
+							nameof(deliveredSequenceId));
+					}
+					if (keyExists)
+					{
+						conflict = !UndeliveredSequenceIds.TryUpdate(
+							key: aggregateKey,
+							newValue: new(deliveredSequenceId, aggregateEvents.TailSequenceId),
+							comparisonValue: new(prevDelieveredSequenceId, tailSequenceId));
 					}
 					else
 					{
-						conflict = !UndeliveredSequenceIds.TryUpdate(
-							key: (aggregateType, aggregateId),
-							newValue: (deliveredSequenceId, tailSequenceId),
-							comparisonValue: (prevDelieveredSequenceId, tailSequenceId));
+						conflict = !UndeliveredSequenceIds.TryAdd(
+							aggregateKey,
+							new(deliveredSequenceId, aggregateEvents.TailSequenceId));
 					}
-				}
-				else
-				{
-#warning TODO:
-					// TODO:
 				}
 			} while (conflict);
 			return Task.CompletedTask;
@@ -263,9 +289,10 @@ namespace WalletWasabi.EventSourcing
 		private void MarkUndeliveredSequenceIds(
 			string aggregateType,
 			string aggregateId,
-			long maxDeliveredSequenceId,
+			long prevDeliveredSequenceId,
 			long tailSequenceId)
 		{
+			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
 			var deliveredSequenceId = 0L;
 			var prevTailSequenceId = 0L;
@@ -275,17 +302,18 @@ namespace WalletWasabi.EventSourcing
 					throw new ApplicationException("Live lock detected.");
 				(deliveredSequenceId, prevTailSequenceId) =
 					UndeliveredSequenceIds.GetOrAdd(
-						key: (aggregateType, aggregateId),
-						value: (maxDeliveredSequenceId, tailSequenceId));
+						key: aggregateKey,
+						value: new(prevDeliveredSequenceId, tailSequenceId));
 
-				// If key was newly added to the dictionary we are done.
-				if (prevTailSequenceId == tailSequenceId)
+				// If key was newly added to the dictionary or
+				// there is already greater TailSequenceId we are done.
+				if (tailSequenceId <= prevTailSequenceId)
 					return;
 			}
 			while (!UndeliveredSequenceIds.TryUpdate(
-					key: (aggregateType, aggregateId),
-					newValue: (deliveredSequenceId, tailSequenceId),
-					comparisonValue: (deliveredSequenceId, prevTailSequenceId)));
+					key: aggregateKey,
+					newValue: new(deliveredSequenceId, tailSequenceId),
+					comparisonValue: new(deliveredSequenceId, prevTailSequenceId)));
 		}
 
 		// Hook for parallel critical section testing in DEBUG build only.
