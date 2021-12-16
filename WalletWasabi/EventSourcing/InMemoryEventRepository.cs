@@ -155,6 +155,8 @@ namespace WalletWasabi.EventSourcing
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
 
+				MarkDelivered_Started();
+
 				// If deliveredSequenceId is too high
 				if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
 					|| !aggregates.TryGetValue(aggregateId, out aggregateEvents)
@@ -164,6 +166,8 @@ namespace WalletWasabi.EventSourcing
 						$"{nameof(deliveredSequenceId)} is greater than last appended event's SequenceId (than '{nameof(AggregateEvents.TailSequenceId)}')",
 						nameof(deliveredSequenceId));
 				}
+
+				MarkDelivered_Got();
 			}
 			while (!TryDoMarkEventsAsDeliveredComulative(aggregateKey, aggregateEvents, deliveredSequenceId));
 
@@ -271,7 +275,12 @@ namespace WalletWasabi.EventSourcing
 					transactionFirstSequenceId - 1,
 					transactionFirstSequenceId,
 					transactionLastSequenceId);
+
+				MarkUndelivered_Started(); // no action
+
 				previous = UndeliveredSequenceIds.GetOrAdd(aggregateKey, newValue);
+
+				MarkUndelivered_Got(); // no action
 
 				// If key was newly added to the dictionary we are done.
 				if (previous == newValue)
@@ -288,10 +297,14 @@ namespace WalletWasabi.EventSourcing
 						previous.DeliveredSequenceId,
 						previous))
 					{
+						MarkUndelivered_UndeliveredConflictFixed(); // no action
+
 						continue;
 					}
 					else
 					{
+						MarkUndelivered_UndeliveredConflictNotFixed(); // no action
+
 						return;
 					}
 				}
@@ -300,6 +313,8 @@ namespace WalletWasabi.EventSourcing
 				key: aggregateKey,
 				newValue: new(previous.DeliveredSequenceId, transactionFirstSequenceId, transactionLastSequenceId),
 				comparisonValue: previous));
+
+			MarkUndelivered_Ended(); // no action
 		}
 
 		private bool TryDoMarkEventsAsDeliveredComulative(
@@ -307,18 +322,26 @@ namespace WalletWasabi.EventSourcing
 			AggregateEvents aggregateEvents,
 			long deliveredSequenceId)
 		{
+			DoMarkDelivered_Entered(); // no action
+
 			if (UndeliveredSequenceIds.TryGetValue(aggregateKey, out var previous))
 			{
+				DoMarkDelivered_Got(); // no action
+
 				if (previous.TransactionLastSequenceId < aggregateEvents.TailSequenceId)
 					throw new ApplicationException($"'{nameof(UndeliveredSequenceIds)}' is inconsistnet with '{nameof(AggregatesEvents)}'. '{nameof(AggregateSequenceIds.TransactionLastSequenceId)}' is smaller than '{nameof(AggregateEvents.TailSequenceId)}'. (aggregateKey: '{aggregateKey}')");
 
 				if (TryFixUndeliveredSequenceIdsAfterAppendConflict(aggregateKey, aggregateEvents, deliveredSequenceId, previous))
 				{
+					DoMarkDelivered_UndeliveredConflictFixed();
+
 					// Conflict has been fixed or another conflict detected we need to retry hence return false;
 					return false;
 				}
 				else
 				{
+					DoMarkDelivered_UndeliveredConflictNotFixed();
+
 					// If sequenceId is already marked as delivered we are done.
 					if (deliveredSequenceId <= previous.DeliveredSequenceId)
 						return true;

@@ -260,7 +260,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(TestEventRepository.AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(TestEventRepository.Append_AppendedSemaphore.Wait(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -271,9 +271,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			void WaitForConflict()
 			{
-				Assert.True(TestEventRepository.ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(TestEventRepository.Append_ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
 			}
-			TestEventRepository.AppendedCallback = WaitForConflict;
+			TestEventRepository.Append_AppendedCallback = WaitForConflict;
 
 			// Assert
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendInParallelAsync);
@@ -300,7 +300,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(TestEventRepository.AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(TestEventRepository.Append_AppendedSemaphore.Wait(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -311,9 +311,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			void WaitForNoConflict()
 			{
-				Assert.False(TestEventRepository.ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.False(TestEventRepository.Append_ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
 			}
-			TestEventRepository.AppendedCallback = WaitForNoConflict;
+			TestEventRepository.Append_AppendedCallback = WaitForNoConflict;
 
 			// no conflict
 			await AppendInParallelAsync();
@@ -328,8 +328,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		}
 
 		[Theory]
-		[InlineData(nameof(TestInMemoryEventRepository.ValidatedCallback))]
-		[InlineData(nameof(TestInMemoryEventRepository.AppendedCallback))]
+		[InlineData(nameof(TestInMemoryEventRepository.Append_ValidatedCallback))]
+		[InlineData(nameof(TestInMemoryEventRepository.Append_AppendedCallback))]
 		public async Task ListEventsAsync_ConflictWithAppending_Async(string listOnCallback)
 		{
 			// Arrange
@@ -349,12 +349,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			switch (listOnCallback)
 			{
-				case nameof(TestInMemoryEventRepository.ValidatedCallback):
-					TestEventRepository.ValidatedCallback = ListCallback;
+				case nameof(TestInMemoryEventRepository.Append_ValidatedCallback):
+					TestEventRepository.Append_ValidatedCallback = ListCallback;
 					break;
 
-				case nameof(TestInMemoryEventRepository.AppendedCallback):
-					TestEventRepository.AppendedCallback = ListCallback;
+				case nameof(TestInMemoryEventRepository.Append_AppendedCallback):
+					TestEventRepository.Append_AppendedCallback = ListCallback;
 					break;
 
 				default:
@@ -366,7 +366,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var expected = events1.AsEnumerable();
 			switch (listOnCallback)
 			{
-				case nameof(TestInMemoryEventRepository.AppendedCallback):
+				case nameof(TestInMemoryEventRepository.Append_AppendedCallback):
 					expected = expected.Concat(events2);
 					break;
 			}
