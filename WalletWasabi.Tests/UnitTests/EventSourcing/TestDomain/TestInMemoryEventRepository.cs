@@ -21,26 +21,26 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public Action? ConflictedCallback { get; set; }
 		public Action? AppendedCallback { get; set; }
 
-		protected override void Validated()
+		protected override void Append_Validated()
 		{
-			base.Validated();
-			Output.WriteLine(nameof(Validated));
+			base.Append_Validated();
+			Output.WriteLine(nameof(Append_Validated));
 			ValidatedSemaphore.Release();
 			ValidatedCallback?.Invoke();
 		}
 
-		protected override void Conflicted()
+		protected override void Append_Conflicted()
 		{
-			base.Conflicted();
-			Output.WriteLine(nameof(Conflicted));
+			base.Append_Conflicted();
+			Output.WriteLine(nameof(Append_Conflicted));
 			ConflictedSemaphore.Release();
 			ConflictedCallback?.Invoke();
 		}
 
-		protected override void Appended()
+		protected override void Append_Appended()
 		{
-			base.Appended();
-			Output.WriteLine(nameof(Appended));
+			base.Append_Appended();
+			Output.WriteLine(nameof(Append_Appended));
 			AppendedSemaphore.Release();
 			AppendedCallback?.Invoke();
 		}

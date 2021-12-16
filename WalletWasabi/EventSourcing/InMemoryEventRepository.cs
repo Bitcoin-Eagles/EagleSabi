@@ -71,39 +71,35 @@ namespace WalletWasabi.EventSourcing
 			if (lastSequenceId - firstSequenceId + 1 != wrappedEventsList.Count)
 				throw new ArgumentException("Event sequence ids are inconsistent.", nameof(wrappedEvents));
 
-			var aggregateEvents = AggregatesEvents.GetOrAdd(aggregateType, _ => new());
-			var (tailSequenceId, events, transactionId) = aggregateEvents.GetOrAdd(
+			var aggregatesEvents = AggregatesEvents.GetOrAdd(aggregateType, _ => new());
+			var prevEvents = aggregatesEvents.GetOrAdd(
 				aggregateId,
-				_ => new(0, ImmutableList<WrappedEvent>.Empty, Guid.NewGuid()));
+				_ => new(0, ImmutableList<WrappedEvent>.Empty));
 
-			if (tailSequenceId + 1 < firstSequenceId)
-				throw new ArgumentException($"Invalid firstSequenceId (gap in sequence ids) expected: '{tailSequenceId + 1}' given: '{firstSequenceId}'.", nameof(wrappedEvents));
+			if (prevEvents.TailSequenceId + 1 < firstSequenceId)
+				throw new ArgumentException($"Invalid firstSequenceId (gap in sequence ids) expected: '{prevEvents.TailSequenceId + 1}' given: '{firstSequenceId}'.", nameof(wrappedEvents));
 
-			Validated(); // no action
+			Append_Validated(); // no action
 
-			var newEvents = events.AddRange(wrappedEventsList);
-			var newTransactionId = Guid.NewGuid();
+			var newEvents = prevEvents.Events.AddRange(wrappedEventsList);
+			var newValue = new AggregateEvents(lastSequenceId, newEvents);
+			var comparisonValue = prevEvents with { TailSequenceId = firstSequenceId - 1 };
 
-#warning TODO:
-			// TODO: rethink tailSequenceId + 1 and necessity of tail id or transactionId
-			MarkUndeliveredSequenceIds(aggregateType, aggregateId, tailSequenceId, tailSequenceId + 1, newTransactionId);
+			MarkUndeliveredSequenceIds(aggregateType, aggregateId, firstSequenceId, lastSequenceId, prevEvents);
 
-			MarkedUndelivered(); // no action
+			Append_MarkedUndelivered(); // no action
 
 			// Atomically detect conflict and replace lastSequenceId.
-			if (!aggregateEvents.TryUpdate(
-				key: aggregateId,
-				newValue: new(lastSequenceId, newEvents, newTransactionId),
-				comparisonValue: new(firstSequenceId - 1, events, transactionId)))
+			if (!aggregatesEvents.TryUpdate(aggregateId, newValue, comparisonValue))
 			{
-				Conflicted(); // no action
+				Append_Conflicted(); // no action
 				throw new OptimisticConcurrencyException(
 					$"Conflict while committing events. Retry command. aggregate: '{aggregateType}' id: '{aggregateId}'");
 			}
-			Appended(); // no action
+			Append_Appended(); // no action
 
 			// If it is a first event for given aggregate.
-			if (tailSequenceId == 0)
+			if (prevEvents.TailSequenceId == 0)
 				// Add index of aggregate id into the dictionary.
 				IndexNewAggregateId(aggregateType, aggregateId);
 
@@ -153,67 +149,24 @@ namespace WalletWasabi.EventSourcing
 		{
 			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
-			var conflict = false;
-			var prevDelieveredSequenceId = 0L;
-			var tailSequenceId = 0L;
-			var transactionId = Guid.Empty;
+			AggregateEvents? aggregateEvents;
 			do
 			{
-				conflict = false;
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
-				var keyExists = false;
-				if (UndeliveredSequenceIds.TryGetValue(aggregateKey, out var tuple))
-				{
-					keyExists = true;
 
-					// If sequenceId is already marked as delivered we are done.
-					if (deliveredSequenceId <= tuple.DeliveredSequenceId)
-						return Task.CompletedTask;
-					prevDelieveredSequenceId = tuple.DeliveredSequenceId;
-					tailSequenceId = tuple.TailSequenceId;
-					transactionId = tuple.TransactionId;
-
-					// If all events have been delivered
-					if (tailSequenceId == deliveredSequenceId)
-					{
-						conflict = !UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, tuple));
-					}
-					// If some events remain to be delivered
-					else if (deliveredSequenceId < tailSequenceId)
-					{
-						conflict = !UndeliveredSequenceIds.TryUpdate(
-							key: aggregateKey,
-							newValue: new(deliveredSequenceId, tailSequenceId, transactionId),
-							comparisonValue: tuple);
-					}
-				}
-				// If MarkUndeliveredSequenceIds() hasn't been called yet
+				// If deliveredSequenceId is too high
+				if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
+					|| !aggregates.TryGetValue(aggregateId, out aggregateEvents)
+					|| aggregateEvents.TailSequenceId < deliveredSequenceId)
 				{
-					// If deliveredSequenceId is too high
-					if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
-						|| !aggregates.TryGetValue(aggregateId, out var aggregateEvents)
-						|| aggregateEvents.TailSequenceId < deliveredSequenceId)
-					{
-						throw new ArgumentException(
-							$"{nameof(deliveredSequenceId)} is greater than last appended event's SequenceId",
-							nameof(deliveredSequenceId));
-					}
-					if (keyExists)
-					{
-						conflict = !UndeliveredSequenceIds.TryUpdate(
-							key: aggregateKey,
-							newValue: new(deliveredSequenceId, aggregateEvents.TailSequenceId, aggregateEvents.TransactionId),
-							comparisonValue: tuple!);
-					}
-					else
-					{
-						conflict = !UndeliveredSequenceIds.TryAdd(
-							aggregateKey,
-							new(deliveredSequenceId, aggregateEvents.TailSequenceId, aggregateEvents.TransactionId));
-					}
+					throw new ArgumentException(
+						$"{nameof(deliveredSequenceId)} is greater than last appended event's SequenceId (than '{nameof(AggregateEvents.TailSequenceId)}')",
+						nameof(deliveredSequenceId));
 				}
-			} while (conflict);
+			}
+			while (!TryDoMarkEventsAsDeliveredComulative(aggregateKey, aggregateEvents, deliveredSequenceId));
+
 			return Task.CompletedTask;
 		}
 
@@ -224,13 +177,24 @@ namespace WalletWasabi.EventSourcing
 				throw new ArgumentOutOfRangeException(nameof(maxCount), $"'{maxCount}' is not positive integer.");
 			var result = new List<AggregateUndeliveredEvents>();
 
-			foreach (
-				var ((aggregateType, aggregateId), (deliveredSequenceId, _, _))
-				in UndeliveredSequenceIds)
+			foreach (var (key, sequenceIds) in UndeliveredSequenceIds)
 			{
-				var events = await ListEventsAsync(aggregateType, aggregateId, deliveredSequenceId, maxCount)
+				var events = await ListEventsAsync(key.AggregateType, key.AggregateId, sequenceIds.DeliveredSequenceId, maxCount)
 					.ConfigureAwait(false);
-				result.Add(new AggregateUndeliveredEvents(aggregateType, aggregateId, events));
+
+				if (0 < events.Count)
+				{
+					result.Add(new AggregateUndeliveredEvents(key.AggregateType, key.AggregateId, events));
+				}
+				else if (AggregatesEvents.TryGetValue(key.AggregateType, out var aggregatesEvents)
+					&& aggregatesEvents.TryGetValue(key.AggregateId, out var aggregateEvents))
+				{
+					TryFixUndeliveredSequenceIdsAfterAppendConflict(
+						key,
+						aggregateEvents,
+						sequenceIds.DeliveredSequenceId,
+						sequenceIds);
+				}
 
 				maxCount -= events.Count;
 				if (maxCount <= 0)
@@ -292,59 +256,152 @@ namespace WalletWasabi.EventSourcing
 		private void MarkUndeliveredSequenceIds(
 			string aggregateType,
 			string aggregateId,
-			long maxDeliveredSequenceId,
-			long tailSequenceId,
-			Guid transactionId)
+			long transactionFirstSequenceId,
+			long transactionLastSequenceId,
+			AggregateEvents aggregateEvents)
 		{
 			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
-			var deliveredSequenceId = 0L;
-			var prevTailSequenceId = 0L;
-			var prevTransactionId = Guid.Empty;
+			AggregateSequenceIds? previous;
 			do
 			{
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
-				(deliveredSequenceId, prevTailSequenceId, prevTransactionId) =
-					UndeliveredSequenceIds.GetOrAdd(
-						key: aggregateKey,
-						value: new(maxDeliveredSequenceId, tailSequenceId, transactionId));
+				var newValue = new AggregateSequenceIds(
+					transactionFirstSequenceId - 1,
+					transactionFirstSequenceId,
+					transactionLastSequenceId);
+				previous = UndeliveredSequenceIds.GetOrAdd(aggregateKey, newValue);
 
-				// If key was newly added to the dictionary or
-				// there is already greater TailSequenceId we are done.
-				if (tailSequenceId <= prevTailSequenceId)
+				// If key was newly added to the dictionary we are done.
+				if (previous == newValue)
+				{
 					return;
+				}
+				// If there is already greater TransactionLastSequenceId try
+				// to fix after possible conflict and retry.
+				else if (transactionLastSequenceId < previous.TransactionLastSequenceId)
+				{
+					if (TryFixUndeliveredSequenceIdsAfterAppendConflict(
+						new(aggregateType, aggregateId),
+						aggregateEvents,
+						previous.DeliveredSequenceId,
+						previous))
+					{
+						continue;
+					}
+					else
+					{
+						return;
+					}
+				}
 			}
 			while (!UndeliveredSequenceIds.TryUpdate(
-					key: aggregateKey,
-					newValue: new(deliveredSequenceId, tailSequenceId, transactionId),
-					comparisonValue: new(deliveredSequenceId, prevTailSequenceId, prevTransactionId)));
+				key: aggregateKey,
+				newValue: new(previous.DeliveredSequenceId, transactionFirstSequenceId, transactionLastSequenceId),
+				comparisonValue: previous));
+		}
+
+		private bool TryDoMarkEventsAsDeliveredComulative(
+			AggregateKey aggregateKey,
+			AggregateEvents aggregateEvents,
+			long deliveredSequenceId)
+		{
+			if (UndeliveredSequenceIds.TryGetValue(aggregateKey, out var previous))
+			{
+				if (previous.TransactionLastSequenceId < aggregateEvents.TailSequenceId)
+					throw new ApplicationException($"'{nameof(UndeliveredSequenceIds)}' is inconsistnet with '{nameof(AggregatesEvents)}'. '{nameof(AggregateSequenceIds.TransactionLastSequenceId)}' is smaller than '{nameof(AggregateEvents.TailSequenceId)}'. (aggregateKey: '{aggregateKey}')");
+
+				if (TryFixUndeliveredSequenceIdsAfterAppendConflict(aggregateKey, aggregateEvents, deliveredSequenceId, previous))
+				{
+					// Conflict has been fixed or another conflict detected we need to retry hence return false;
+					return false;
+				}
+				else
+				{
+					// If sequenceId is already marked as delivered we are done.
+					if (deliveredSequenceId <= previous.DeliveredSequenceId)
+						return true;
+
+					// If all events have been delivered
+					if (previous.TransactionLastSequenceId == deliveredSequenceId)
+					{
+						return UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
+					}
+					// If some events remain to be delivered
+					else if (deliveredSequenceId < previous.TransactionLastSequenceId)
+					{
+						var newValue = previous with { DeliveredSequenceId = deliveredSequenceId };
+						return UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
+					}
+					else
+					{
+						// At this point one of the previous exceptions should have been thrown.
+						throw new ApplicationException($"Unexpected code reached in '{nameof(TryDoMarkEventsAsDeliveredComulative)}'.");
+					}
+				}
+			}
+			else
+			{
+				// 'deliveredSequenceId' has been already marked so we are done.
+				return true;
+			}
+		}
+
+		private bool TryFixUndeliveredSequenceIdsAfterAppendConflict(
+			AggregateKey aggregateKey,
+			AggregateEvents aggregateEvents,
+			long deliveredSequenceId,
+			AggregateSequenceIds previous)
+		{
+			// If there has been conflict previously in AppendEventsAsync() and
+			// previous.TransactionLastSequenceId is too high
+			if (previous.TransactionFirstSequenceId <= aggregateEvents.TailSequenceId
+				&& aggregateEvents.TailSequenceId < previous.TransactionLastSequenceId)
+			{
+				if (deliveredSequenceId == aggregateEvents.TailSequenceId)
+				{
+					UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
+				}
+				else
+				{
+					var newValue = previous with { TransactionLastSequenceId = aggregateEvents.TailSequenceId };
+					UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
+				}
+				// Regardless whether it has been fixed or there is another conflict
+				// in UndeliveredSequenceIds we need to retry so return true eitherway.
+				return true;
+			}
+			else
+			{
+				return false;
+			}
 		}
 
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
-		protected virtual void Validated()
+		protected virtual void Append_Validated()
 		{
 			// Keep empty. To be overriden in tests.
 		}
 
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
-		protected virtual void MarkedUndelivered()
+		protected virtual void Append_MarkedUndelivered()
 		{
 			// Keep empty. To be overriden in tests.
 		}
 
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
-		protected virtual void Conflicted()
+		protected virtual void Append_Conflicted()
 		{
 			// Keep empty. To be overriden in tests.
 		}
 
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
-		protected virtual void Appended()
+		protected virtual void Append_Appended()
 		{
 			// Keep empty. To be overriden in tests.
 		}
