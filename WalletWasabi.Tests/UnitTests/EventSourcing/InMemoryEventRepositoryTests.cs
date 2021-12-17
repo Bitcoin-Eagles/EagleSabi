@@ -679,6 +679,62 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			await AssertAsync(bEvents, "MY_ID_B", bDeliveredSequenceIds, bEventsCount, ActionB_Async);
 		}
 
+		[Theory]
+		[InlineData(2, 1, 1, false)]
+		[InlineData(3, 2, 1, true)]
+		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_NoConflict_Async(
+			int conflictedEvents,
+			int appendedEvents,
+			int confirmedSequenceId,
+			bool update)
+		{
+			// Arrange
+
+			// Act
+			async Task AppendAsync()
+			{
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+				{
+					new(1, "a1"),
+					new(2, "a2"),
+					new(3, "a3"),
+				}.Take(conflictedEvents));
+			}
+			// After first AppendEventsAsync() call marks events as undelivered but before
+			// they are actually appended to the repository
+			TestEventRepository.Append_MarkedUndeliveredCallback = () =>
+			{
+				TestEventRepository.Append_MarkedUndeliveredCallback = null;
+				Task.Run(async () =>
+				{
+					// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
+					await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+					{
+						new(1, "b1"),
+						new(2, "b2"),
+					}.Take(appendedEvents));
+					await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "ID_1", confirmedSequenceId);
+				}).Wait();
+			};
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendAsync);
+			(await TestEventRepository.DoMarkDelivered_UndeliveredConflictFixedSemaphore.WaitAsync(0))
+				.ShouldBeTrue();
+			(await TestEventRepository.TryFixUndelivered_UpdatedSemaphore.WaitAsync(0))
+				.ShouldBe(update);
+			(await TestEventRepository.TryFixUndelivered_RemovedSemaphore.WaitAsync(0))
+				.ShouldBe(!update);
+			(await TestEventRepository.TryFixUndelivered_UpdateConflictedSemaphore.WaitAsync(0))
+				.ShouldBeFalse();
+			(await TestEventRepository.TryFixUndelivered_RemoveConflictedSemaphore.WaitAsync(0))
+				.ShouldBeFalse();
+			(await EventRepository.ListUndeliveredEventsAsync())
+				.SelectMany(a => a.WrappedEvents)
+				.Count()
+				.ShouldBe(appendedEvents - confirmedSequenceId);
+		}
+
 		public void Dispose()
 		{
 			TestEventRepository.Dispose();

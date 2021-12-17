@@ -383,6 +383,8 @@ namespace WalletWasabi.EventSourcing
 			long deliveredSequenceId,
 			AggregateSequenceIds previous)
 		{
+			TryFixUndelivered_Entered(); // no action
+
 			// If there has been conflict previously in AppendEventsAsync() and
 			// previous.TransactionLastSequenceId is too high
 			if (previous.TransactionFirstSequenceId <= aggregateEvents.TailSequenceId
@@ -390,12 +392,20 @@ namespace WalletWasabi.EventSourcing
 			{
 				if (deliveredSequenceId == aggregateEvents.TailSequenceId)
 				{
-					UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
+					var success = UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
+					if (success)
+						TryFixUndelivered_Removed();
+					else
+						TryFixUndelivered_RemoveConflicted();
 				}
 				else
 				{
 					var newValue = previous with { TransactionLastSequenceId = aggregateEvents.TailSequenceId };
-					UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
+					var success = UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
+					if (success)
+						TryFixUndelivered_Updated();
+					else
+						TryFixUndelivered_UpdateConflicted();
 				}
 				// Regardless whether it has been fixed or there is another conflict
 				// in UndeliveredSequenceIds we need to retry so return true eitherway.
@@ -515,6 +525,41 @@ namespace WalletWasabi.EventSourcing
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
 		protected virtual void DoMarkDelivered_UndeliveredConflictNotFixed()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void TryFixUndelivered_Entered()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void TryFixUndelivered_Removed()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void TryFixUndelivered_RemoveConflicted()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void TryFixUndelivered_Updated()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void TryFixUndelivered_UpdateConflicted()
 		{
 			// Keep empty. To be overriden in tests.
 		}
