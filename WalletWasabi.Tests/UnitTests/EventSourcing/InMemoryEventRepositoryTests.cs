@@ -515,6 +515,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				{
 					undeliveredEvents.Count.ShouldBe(1);
 					undeliveredEvents[0].AggregateType.ShouldBe(nameof(TestRoundAggregate));
+					undeliveredEvents[0].AggregateId.ShouldBe("MY_ID_1");
 					undeliveredEvents[0].WrappedEvents.Cast<TestWrappedEvent>().ShouldBe(events.Skip(deliveredSequenceId));
 				}
 				else if (deliveredSequenceId == eventCount)
@@ -526,6 +527,156 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulative_SingleThread_Async)}'");
 				}
 			}
+		}
+
+		[Theory]
+		[InlineData(0, 0, 0, 0)]
+		[InlineData(0, 0, 1, 0)]
+		[InlineData(0, 0, 0, 1)]
+		[InlineData(0, 0, -1, 0)]
+		[InlineData(0, 0, 0, -1)]
+		[InlineData(1, 0, 0, 0)]
+		[InlineData(1, 0, 0, 1)]
+		[InlineData(1, 0, 1, 0)]
+		[InlineData(1, 0, 1, 1)]
+		[InlineData(1, 0, 1, -1)]
+		[InlineData(1, 0, 2, 0)]
+		[InlineData(1, 0, -1, 1)]
+		[InlineData(0, 1, 0, 0)]
+		[InlineData(0, 1, 0, 1)]
+		[InlineData(0, 1, 1, 0)]
+		[InlineData(0, 1, 1, 1)]
+		[InlineData(0, 1, 1, -1)]
+		[InlineData(0, 1, 0, 2)]
+		[InlineData(0, 1, -1, 1)]
+		[InlineData(1, 1, 0, 0)]
+		[InlineData(1, 1, 0, 1)]
+		[InlineData(1, 1, 1, 0)]
+		[InlineData(1, 1, 1, 1)]
+		[InlineData(1, 1, 1, -1)]
+		[InlineData(1, 1, 0, 2)]
+		[InlineData(1, 1, 1, 2)]
+		[InlineData(1, 1, 2, 0)]
+		[InlineData(1, 1, 2, 1)]
+		[InlineData(1, 1, 2, 2)]
+		[InlineData(1, 1, -1, 1)]
+		[InlineData(1, 2, 0, 0)]
+		[InlineData(1, 2, 0, 1)]
+		[InlineData(1, 2, 1, 0)]
+		[InlineData(1, 2, 1, 1)]
+		[InlineData(1, 2, 1, -1)]
+		[InlineData(1, 2, 0, 2)]
+		[InlineData(1, 2, 1, 2)]
+		[InlineData(1, 2, 1, 3)]
+		[InlineData(1, 2, 2, 0)]
+		[InlineData(1, 2, 2, 1)]
+		[InlineData(1, 2, 2, 2)]
+		[InlineData(1, 2, 2, 3)]
+		[InlineData(1, 2, -1, 1)]
+		[InlineData(2, 1, 0, 0)]
+		[InlineData(2, 1, 0, 1)]
+		[InlineData(2, 1, 1, 0)]
+		[InlineData(2, 1, 1, 1)]
+		[InlineData(2, 1, 1, -1)]
+		[InlineData(2, 1, 0, 2)]
+		[InlineData(2, 1, 1, 2)]
+		[InlineData(2, 1, 1, 3)]
+		[InlineData(2, 1, 2, 0)]
+		[InlineData(2, 1, 2, 1)]
+		[InlineData(2, 1, 2, 2)]
+		[InlineData(2, 1, 3, 2)]
+		[InlineData(2, 1, -1, 1)]
+		[InlineData(2, 2, 0, 0)]
+		[InlineData(2, 2, 0, 1)]
+		[InlineData(2, 2, 1, 0)]
+		[InlineData(2, 2, 1, 1)]
+		[InlineData(2, 2, 1, -1)]
+		[InlineData(2, 2, 0, 2)]
+		[InlineData(2, 2, 0, 3)]
+		[InlineData(2, 2, 1, 2)]
+		[InlineData(2, 2, 1, 3)]
+		[InlineData(2, 2, 2, 0)]
+		[InlineData(2, 2, 2, 1)]
+		[InlineData(2, 2, 2, 2)]
+		[InlineData(2, 2, 2, 3)]
+		[InlineData(2, 2, 3, 0)]
+		[InlineData(2, 2, 3, 1)]
+		[InlineData(2, 2, 3, 2)]
+		[InlineData(2, 2, 3, 3)]
+		[InlineData(2, 2, -1, 1)]
+		public async Task MarkEventsAsDeliveredCumulative_SingleThreadTwoAggregates_Async(
+			int aEventsCount,
+			int bEventsCount,
+			int aDeliveredSequenceIds,
+			int bDeliveredSequenceIds)
+		{
+			Guard.InRangeAndNotNull(nameof(aEventsCount), aEventsCount, 0, 3);
+			Guard.InRangeAndNotNull(nameof(bEventsCount), bEventsCount, 0, 3);
+
+			// Arrange
+			var aEvents = new[]
+			{
+				new TestWrappedEvent(1, "a1"),
+				new TestWrappedEvent(2, "a2"),
+				new TestWrappedEvent(3, "a3"),
+			}.Take(aEventsCount).ToArray();
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_A", aEvents);
+			var bEvents = new[]
+			{
+				new TestWrappedEvent(1, "b1"),
+				new TestWrappedEvent(2, "b2"),
+				new TestWrappedEvent(3, "b3"),
+			}.Take(bEventsCount).ToArray();
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_B", bEvents);
+
+			// Act
+			async Task ActionA_Async()
+			{
+				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_A", aDeliveredSequenceIds);
+			}
+			async Task ActionB_Async()
+			{
+				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_B", bDeliveredSequenceIds);
+			}
+
+			// Assert
+			async Task AssertAsync(TestWrappedEvent[] events, string id, int deliveredSequenceId, int eventCount, Func<Task> actionAsync)
+			{
+				if (deliveredSequenceId < 0)
+				{
+					var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(actionAsync);
+					exception.ParamName.ShouldBe("deliveredSequenceId");
+				}
+				else if (eventCount < deliveredSequenceId)
+				{
+					var exception = await Assert.ThrowsAsync<ArgumentException>(actionAsync);
+					exception.ParamName.ShouldBe("deliveredSequenceId");
+				}
+				else
+				{
+					await actionAsync();
+					var undeliveredEvents = (await EventRepository.ListUndeliveredEventsAsync())
+						.Where(a => a.AggregateId == id)
+						.ToImmutableList();
+					if (deliveredSequenceId < eventCount)
+					{
+						undeliveredEvents.Count.ShouldBe(1);
+						undeliveredEvents[0].AggregateType.ShouldBe(nameof(TestRoundAggregate));
+						undeliveredEvents[0].AggregateId.ShouldBe(id);
+						undeliveredEvents[0].WrappedEvents.Cast<TestWrappedEvent>().ShouldBe(events.Skip(deliveredSequenceId));
+					}
+					else if (deliveredSequenceId == eventCount)
+					{
+						undeliveredEvents.ShouldBeEmpty();
+					}
+					else
+					{
+						throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulative_SingleThreadTwoAggregates_Async)}'");
+					}
+				}
+			}
+			await AssertAsync(aEvents, "MY_ID_A", aDeliveredSequenceIds, aEventsCount, ActionA_Async);
+			await AssertAsync(bEvents, "MY_ID_B", bDeliveredSequenceIds, bEventsCount, ActionB_Async);
 		}
 
 		public void Dispose()
