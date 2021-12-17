@@ -61,6 +61,11 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 			Append_MarkedUndeliveredSemaphore.Dispose();
 			Append_ConflictedSemaphore.Dispose();
 			Append_AppendedSemaphore.Dispose();
+
+			Append_ValidatedCallback = null;
+			Append_MarkedUndeliveredCallback = null;
+			Append_ConflictedCallback = null;
+			Append_AppendedCallback = null;
 		}
 	}
 }
