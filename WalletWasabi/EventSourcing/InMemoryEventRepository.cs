@@ -147,6 +147,10 @@ namespace WalletWasabi.EventSourcing
 		/// <inheritdoc/>
 		public Task MarkEventsAsDeliveredCumulative(string aggregateType, string aggregateId, long deliveredSequenceId)
 		{
+			Guard.MinimumAndNotNull(nameof(deliveredSequenceId), deliveredSequenceId, 0);
+			if (deliveredSequenceId == 0)
+				return Task.CompletedTask;
+
 			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
 			AggregateEvents? aggregateEvents;
@@ -155,21 +159,23 @@ namespace WalletWasabi.EventSourcing
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
 
-				MarkDelivered_Started();
+				MarkDelivered_Started(); // no action
 
 				// If deliveredSequenceId is too high
 				if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
-					|| !aggregates.TryGetValue(aggregateId, out aggregateEvents)
-					|| aggregateEvents.TailSequenceId < deliveredSequenceId)
+						|| !aggregates.TryGetValue(aggregateId, out aggregateEvents)
+						|| aggregateEvents.TailSequenceId < deliveredSequenceId)
 				{
 					throw new ArgumentException(
 						$"{nameof(deliveredSequenceId)} is greater than last appended event's SequenceId (than '{nameof(AggregateEvents.TailSequenceId)}')",
 						nameof(deliveredSequenceId));
 				}
 
-				MarkDelivered_Got();
+				MarkDelivered_Got(); // no action
 			}
 			while (!TryDoMarkEventsAsDeliveredComulative(aggregateKey, aggregateEvents, deliveredSequenceId));
+
+			MarkDelivered_Ended(); // no action
 
 			return Task.CompletedTask;
 		}
@@ -333,14 +339,14 @@ namespace WalletWasabi.EventSourcing
 
 				if (TryFixUndeliveredSequenceIdsAfterAppendConflict(aggregateKey, aggregateEvents, deliveredSequenceId, previous))
 				{
-					DoMarkDelivered_UndeliveredConflictFixed();
+					DoMarkDelivered_UndeliveredConflictFixed(); // no action
 
 					// Conflict has been fixed or another conflict detected we need to retry hence return false;
 					return false;
 				}
 				else
 				{
-					DoMarkDelivered_UndeliveredConflictNotFixed();
+					DoMarkDelivered_UndeliveredConflictNotFixed(); // no action
 
 					// If sequenceId is already marked as delivered we are done.
 					if (deliveredSequenceId <= previous.DeliveredSequenceId)
@@ -425,6 +431,90 @@ namespace WalletWasabi.EventSourcing
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
 		protected virtual void Append_Appended()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkDelivered_Started()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkDelivered_Got()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkDelivered_Ended()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkUndelivered_Started()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkUndelivered_Got()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkUndelivered_UndeliveredConflictFixed()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkUndelivered_UndeliveredConflictNotFixed()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void MarkUndelivered_Ended()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void DoMarkDelivered_Entered()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void DoMarkDelivered_Got()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void DoMarkDelivered_UndeliveredConflictFixed()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void DoMarkDelivered_UndeliveredConflictNotFixed()
 		{
 			// Keep empty. To be overriden in tests.
 		}

@@ -1,3 +1,4 @@
+using Shouldly;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -5,6 +6,7 @@ using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.EventSourcing.Records;
+using WalletWasabi.Helpers;
 using WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain;
 using Xunit;
 using Xunit.Abstractions;
@@ -460,6 +462,70 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Assert
 			Assert.True(result.Count <= limit);
 			Assert.True(result.All(a => afterAggregateId.CompareTo(a) <= 0));
+		}
+
+		[Theory]
+		[InlineData(0, 0)]
+		[InlineData(0, 1)]
+		[InlineData(0, -1)]
+		[InlineData(1, 0)]
+		[InlineData(1, 1)]
+		[InlineData(1, 2)]
+		[InlineData(1, -1)]
+		[InlineData(2, 0)]
+		[InlineData(2, 1)]
+		[InlineData(2, 2)]
+		[InlineData(2, 3)]
+		[InlineData(2, -1)]
+		public async Task MarkEventsAsDeliveredCumulative_SingleThread_Async(int eventCount, int deliveredSequenceId)
+		{
+			Guard.InRangeAndNotNull(nameof(eventCount), eventCount, 0, 3);
+
+			// Arrange
+			var events = new[]
+			{
+				new TestWrappedEvent(1),
+				new TestWrappedEvent(2),
+				new TestWrappedEvent(3),
+			}.Take(eventCount).ToArray();
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+
+			// Act
+			async Task ActionAsync()
+			{
+				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_1", deliveredSequenceId);
+			}
+
+			// Assert
+			if (deliveredSequenceId < 0)
+			{
+				var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(ActionAsync);
+				exception.ParamName.ShouldBe("deliveredSequenceId");
+			}
+			else if (eventCount < deliveredSequenceId)
+			{
+				var exception = await Assert.ThrowsAsync<ArgumentException>(ActionAsync);
+				exception.ParamName.ShouldBe("deliveredSequenceId");
+			}
+			else
+			{
+				await ActionAsync();
+				var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+				if (deliveredSequenceId < eventCount)
+				{
+					undeliveredEvents.Count.ShouldBe(1);
+					undeliveredEvents[0].AggregateType.ShouldBe(nameof(TestRoundAggregate));
+					undeliveredEvents[0].WrappedEvents.Cast<TestWrappedEvent>().ShouldBe(events.Skip(deliveredSequenceId));
+				}
+				else if (deliveredSequenceId == eventCount)
+				{
+					undeliveredEvents.ShouldBeEmpty();
+				}
+				else
+				{
+					throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulative_SingleThread_Async)}'");
+				}
+			}
 		}
 
 		public void Dispose()
