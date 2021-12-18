@@ -1,4 +1,5 @@
 using System.Threading;
+using System.Threading.Tasks;
 using WalletWasabi.EventSourcing;
 using Xunit.Abstractions;
 
@@ -20,93 +21,113 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 
 		public SemaphoreSlim DoMarkDelivered_UndeliveredConflictFixedSemaphore { get; } = new(0);
 
+		public SemaphoreSlim TryFixUndelivered_DetectedSemaphore { get; } = new(0);
 		public SemaphoreSlim TryFixUndelivered_UpdatedSemaphore { get; } = new(0);
 		public SemaphoreSlim TryFixUndelivered_UpdateConflictedSemaphore { get; } = new(0);
 		public SemaphoreSlim TryFixUndelivered_RemovedSemaphore { get; } = new(0);
 		public SemaphoreSlim TryFixUndelivered_RemoveConflictedSemaphore { get; } = new(0);
 
-		public Action? Append_ValidatedCallback { get; set; }
-		public Action? Append_MarkedUndeliveredCallback { get; set; }
-		public Action? Append_ConflictedCallback { get; set; }
-		public Action? Append_AppendedCallback { get; set; }
+		public Func<Task>? Append_ValidatedCallback { get; set; }
+		public Func<Task>? Append_MarkedUndeliveredCallback { get; set; }
+		public Func<Task>? Append_ConflictedCallback { get; set; }
+		public Func<Task>? Append_AppendedCallback { get; set; }
 
-		public Action? DoMarkDelivered_UndeliveredConflictFixedCallback { get; set; }
+		public Func<Task>? DoMarkDelivered_UndeliveredConflictFixedCallback { get; set; }
 
-		public Action? TryFixUndelivered_UpdatedCallback { get; set; }
-		public Action? TryFixUndelivered_UpdateConflictedCallback { get; set; }
-		public Action? TryFixUndelivered_RemovedCallback { get; set; }
-		public Action? TryFixUndelivered_RemoveConflictedCallback { get; set; }
+		public Func<Task>? TryFixUndelivered_DetectedCallback { get; set; }
+		public Func<Task>? TryFixUndelivered_UpdatedCallback { get; set; }
+		public Func<Task>? TryFixUndelivered_UpdateConflictedCallback { get; set; }
+		public Func<Task>? TryFixUndelivered_RemovedCallback { get; set; }
+		public Func<Task>? TryFixUndelivered_RemoveConflictedCallback { get; set; }
 
-		protected override void Append_Validated()
+		protected override async Task Append_Validated()
 		{
-			base.Append_Validated();
+			await base.Append_Validated();
 			Output.WriteLine(nameof(Append_Validated));
 			Append_ValidatedSemaphore.Release();
-			Append_ValidatedCallback?.Invoke();
+			if (Append_ValidatedCallback is not null)
+				await Append_ValidatedCallback.Invoke();
 		}
 
-		protected override void Append_MarkedUndelivered()
+		protected override async Task Append_MarkedUndelivered()
 		{
-			base.Append_MarkedUndelivered();
+			await base.Append_MarkedUndelivered();
 			Output.WriteLine(nameof(Append_MarkedUndelivered));
 			Append_MarkedUndeliveredSemaphore.Release();
-			Append_MarkedUndeliveredCallback?.Invoke();
+			if (Append_MarkedUndeliveredCallback is not null)
+				await Append_MarkedUndeliveredCallback.Invoke();
 		}
 
-		protected override void Append_Conflicted()
+		protected override async Task Append_Conflicted()
 		{
-			base.Append_Conflicted();
+			await base.Append_Conflicted();
 			Output.WriteLine(nameof(Append_Conflicted));
 			Append_ConflictedSemaphore.Release();
-			Append_ConflictedCallback?.Invoke();
+			if (Append_ConflictedCallback is not null)
+				await Append_ConflictedCallback.Invoke();
 		}
 
-		protected override void Append_Appended()
+		protected override async Task Append_Appended()
 		{
-			base.Append_Appended();
+			await base.Append_Appended();
 			Output.WriteLine(nameof(Append_Appended));
 			Append_AppendedSemaphore.Release();
-			Append_AppendedCallback?.Invoke();
+			if (Append_AppendedCallback is not null)
+				await Append_AppendedCallback.Invoke();
 		}
 
-		protected override void DoMarkDelivered_UndeliveredConflictFixed()
+		protected override async Task DoMarkDelivered_UndeliveredConflictFixed()
 		{
-			base.DoMarkDelivered_UndeliveredConflictFixed();
+			await base.DoMarkDelivered_UndeliveredConflictFixed();
 			Output.WriteLine(nameof(DoMarkDelivered_UndeliveredConflictFixed));
 			DoMarkDelivered_UndeliveredConflictFixedSemaphore.Release();
-			DoMarkDelivered_UndeliveredConflictFixedCallback?.Invoke();
+			if (DoMarkDelivered_UndeliveredConflictFixedCallback is not null)
+				await DoMarkDelivered_UndeliveredConflictFixedCallback.Invoke();
 		}
 
-		protected override void TryFixUndelivered_Updated()
+		protected override async Task TryFixUndelivered_Detected()
 		{
-			base.TryFixUndelivered_Updated();
+			await base.TryFixUndelivered_Detected();
+			Output.WriteLine(nameof(TryFixUndelivered_Detected));
+			TryFixUndelivered_DetectedSemaphore.Release();
+			if (TryFixUndelivered_DetectedCallback is not null)
+				await TryFixUndelivered_DetectedCallback.Invoke();
+		}
+
+		protected override async Task TryFixUndelivered_Updated()
+		{
+			await base.TryFixUndelivered_Updated();
 			Output.WriteLine(nameof(TryFixUndelivered_Updated));
 			TryFixUndelivered_UpdatedSemaphore.Release();
-			TryFixUndelivered_UpdatedCallback?.Invoke();
+			if (TryFixUndelivered_UpdatedCallback is not null)
+				await TryFixUndelivered_UpdatedCallback.Invoke();
 		}
 
-		protected override void TryFixUndelivered_UpdateConflicted()
+		protected override async Task TryFixUndelivered_UpdateConflicted()
 		{
-			base.TryFixUndelivered_UpdateConflicted();
+			await base.TryFixUndelivered_UpdateConflicted();
 			Output.WriteLine(nameof(TryFixUndelivered_UpdateConflicted));
 			TryFixUndelivered_UpdateConflictedSemaphore.Release();
-			TryFixUndelivered_UpdateConflictedCallback?.Invoke();
+			if (TryFixUndelivered_UpdateConflictedCallback is not null)
+				await TryFixUndelivered_UpdateConflictedCallback.Invoke();
 		}
 
-		protected override void TryFixUndelivered_Removed()
+		protected override async Task TryFixUndelivered_Removed()
 		{
-			base.TryFixUndelivered_Removed();
+			await base.TryFixUndelivered_Removed();
 			Output.WriteLine(nameof(TryFixUndelivered_Removed));
 			TryFixUndelivered_RemovedSemaphore.Release();
-			TryFixUndelivered_RemovedCallback?.Invoke();
+			if (TryFixUndelivered_RemovedCallback is not null)
+				await TryFixUndelivered_RemovedCallback.Invoke();
 		}
 
-		protected override void TryFixUndelivered_RemoveConflicted()
+		protected override async Task TryFixUndelivered_RemoveConflicted()
 		{
-			base.TryFixUndelivered_RemoveConflicted();
+			await base.TryFixUndelivered_RemoveConflicted();
 			Output.WriteLine(nameof(TryFixUndelivered_RemoveConflicted));
 			TryFixUndelivered_RemoveConflictedSemaphore.Release();
-			TryFixUndelivered_RemoveConflictedCallback?.Invoke();
+			if (TryFixUndelivered_RemoveConflictedCallback is not null)
+				await TryFixUndelivered_RemoveConflictedCallback.Invoke();
 		}
 
 		public void Dispose()
@@ -125,11 +146,13 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 
 			DoMarkDelivered_UndeliveredConflictFixedCallback = null;
 
+			TryFixUndelivered_DetectedSemaphore.Dispose();
 			TryFixUndelivered_UpdatedSemaphore.Dispose();
 			TryFixUndelivered_UpdateConflictedSemaphore.Dispose();
 			TryFixUndelivered_RemovedSemaphore.Dispose();
 			TryFixUndelivered_RemoveConflictedSemaphore.Dispose();
 
+			TryFixUndelivered_DetectedCallback = null;
 			TryFixUndelivered_UpdatedCallback = null;
 			TryFixUndelivered_UpdateConflictedCallback = null;
 			TryFixUndelivered_RemovedCallback = null;

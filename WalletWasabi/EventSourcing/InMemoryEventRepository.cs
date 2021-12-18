@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
@@ -48,7 +47,7 @@ namespace WalletWasabi.EventSourcing
 		{ get; } = new();
 
 		/// <inheritdoc/>
-		public Task AppendEventsAsync(
+		public async Task AppendEventsAsync(
 			string aggregateType,
 			string aggregateId,
 			IEnumerable<WrappedEvent> wrappedEvents)
@@ -59,7 +58,7 @@ namespace WalletWasabi.EventSourcing
 
 			var wrappedEventsList = wrappedEvents.ToList().AsReadOnly();
 			if (wrappedEventsList.Count == 0)
-				return Task.CompletedTask;
+				return;
 
 			var firstSequenceId = wrappedEventsList[0].SequenceId;
 			var lastSequenceId = wrappedEventsList[^1].SequenceId;
@@ -79,31 +78,39 @@ namespace WalletWasabi.EventSourcing
 			if (prevEvents.TailSequenceId + 1 < firstSequenceId)
 				throw new ArgumentException($"Invalid firstSequenceId (gap in sequence ids) expected: '{prevEvents.TailSequenceId + 1}' given: '{firstSequenceId}'.", nameof(wrappedEvents));
 
-			Append_Validated(); // no action
+			await Append_Validated().ConfigureAwait(false); // no action
 
 			var newEvents = prevEvents.Events.AddRange(wrappedEventsList);
 			var newValue = new AggregateEvents(lastSequenceId, newEvents);
 			var comparisonValue = prevEvents with { TailSequenceId = firstSequenceId - 1 };
+			var conflict = prevEvents.TailSequenceId != comparisonValue.TailSequenceId;
 
-			MarkUndeliveredSequenceIds(aggregateType, aggregateId, firstSequenceId, lastSequenceId, prevEvents);
+			if (!conflict)
+			{
+				await MarkUndeliveredSequenceIdsAsync(aggregateType, aggregateId, firstSequenceId, lastSequenceId, prevEvents)
+					.ConfigureAwait(false);
 
-			Append_MarkedUndelivered(); // no action
+				await Append_MarkedUndelivered().ConfigureAwait(false); // no action
+			}
 
-			// Atomically detect conflict and replace lastSequenceId.
+			// Atomically detect conflict and replace TailSequenceId and append events.
+			// NOTE: for robustness and unification we call it even if we already know about conflict
+			// because there can also be a conflict that we don't know about and can't know about yet.
 			if (!aggregatesEvents.TryUpdate(aggregateId, newValue, comparisonValue))
 			{
-				Append_Conflicted(); // no action
+				await Append_Conflicted().ConfigureAwait(false); // no action
 				throw new OptimisticConcurrencyException(
 					$"Conflict while committing events. Retry command. aggregate: '{aggregateType}' id: '{aggregateId}'");
 			}
-			Append_Appended(); // no action
+			if (conflict)
+				throw new ApplicationException($"Unexpected code reached in '{nameof(AppendEventsAsync)}'. (conflict: '{conflict}')");
+
+			await Append_Appended().ConfigureAwait(false); // no action
 
 			// If it is a first event for given aggregate.
 			if (prevEvents.TailSequenceId == 0)
 				// Add index of aggregate id into the dictionary.
 				IndexNewAggregateId(aggregateType, aggregateId);
-
-			return Task.CompletedTask;
 		}
 
 		/// <inheritdoc/>
@@ -145,25 +152,27 @@ namespace WalletWasabi.EventSourcing
 		}
 
 		/// <inheritdoc/>
-		public Task MarkEventsAsDeliveredCumulative(string aggregateType, string aggregateId, long deliveredSequenceId)
+		public async Task MarkEventsAsDeliveredCumulativeAsync(string aggregateType, string aggregateId, long deliveredSequenceId)
 		{
 			Guard.MinimumAndNotNull(nameof(deliveredSequenceId), deliveredSequenceId, 0);
 			if (deliveredSequenceId == 0)
-				return Task.CompletedTask;
+				return;
 
 			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
-			AggregateEvents? aggregateEvents;
+			var conflict = false;
 			do
 			{
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
-
-				MarkDelivered_Started(); // no action
+				if (conflict)
+					await MarkDelivered_Conflicted().ConfigureAwait(false); // no action
+				else
+					await MarkDelivered_Started().ConfigureAwait(false); // no action
 
 				// If deliveredSequenceId is too high
 				if (!AggregatesEvents.TryGetValue(aggregateType, out var aggregates)
-						|| !aggregates.TryGetValue(aggregateId, out aggregateEvents)
+						|| !aggregates.TryGetValue(aggregateId, out var aggregateEvents)
 						|| aggregateEvents.TailSequenceId < deliveredSequenceId)
 				{
 					throw new ArgumentException(
@@ -171,13 +180,14 @@ namespace WalletWasabi.EventSourcing
 						nameof(deliveredSequenceId));
 				}
 
-				MarkDelivered_Got(); // no action
+				await MarkDelivered_Got().ConfigureAwait(false); // no action
+
+				conflict = !await TryDoMarkEventsAsDeliveredComulativeAsync(aggregateKey, aggregateEvents, deliveredSequenceId)
+					.ConfigureAwait(false);
 			}
-			while (!TryDoMarkEventsAsDeliveredComulative(aggregateKey, aggregateEvents, deliveredSequenceId));
+			while (conflict);
 
-			MarkDelivered_Ended(); // no action
-
-			return Task.CompletedTask;
+			await MarkDelivered_Ended().ConfigureAwait(false); // no action
 		}
 
 		/// <inheritdoc/>
@@ -199,11 +209,12 @@ namespace WalletWasabi.EventSourcing
 				else if (AggregatesEvents.TryGetValue(key.AggregateType, out var aggregatesEvents)
 					&& aggregatesEvents.TryGetValue(key.AggregateId, out var aggregateEvents))
 				{
-					TryFixUndeliveredSequenceIdsAfterAppendConflict(
+					await TryFixUndeliveredSequenceIdsAfterAppendConflictAsync(
 						key,
 						aggregateEvents,
 						sequenceIds.DeliveredSequenceId,
-						sequenceIds);
+						sequenceIds)
+						.ConfigureAwait(false);
 				}
 
 				maxCount -= events.Count;
@@ -263,111 +274,124 @@ namespace WalletWasabi.EventSourcing
 				comparisonValue: new AggregateTypeIds(tailIndex, aggregateIds)));
 		}
 
-		private void MarkUndeliveredSequenceIds(
+		private async Task MarkUndeliveredSequenceIdsAsync(
 			string aggregateType,
 			string aggregateId,
 			long transactionFirstSequenceId,
 			long transactionLastSequenceId,
 			AggregateEvents aggregateEvents)
 		{
+			if (transactionLastSequenceId < transactionFirstSequenceId)
+				throw new ArgumentException($"'{nameof(transactionLastSequenceId)}' < '{nameof(transactionFirstSequenceId)}'");
+			if (transactionFirstSequenceId <= aggregateEvents.TailSequenceId)
+			{
+				throw new ArgumentException($"There is an optimistic concurrency conflict. So this call is pointless.",
+					nameof(transactionFirstSequenceId));
+			}
+
 			var aggregateKey = new AggregateKey(aggregateType, aggregateId);
 			var liveLockLimit = LIVE_LOCK_LIMIT;
 			AggregateSequenceIds? previous;
+			var conflict = false;
 			do
 			{
 				if (liveLockLimit-- <= 0)
 					throw new ApplicationException("Live lock detected.");
-				var newValue = new AggregateSequenceIds(
+				if (conflict)
+					await MarkUndelivered_Conflicted().ConfigureAwait(false); // no action
+				else
+					await MarkUndelivered_Started().ConfigureAwait(false); // no action
+
+				var defaultValue = new AggregateSequenceIds(
 					transactionFirstSequenceId - 1,
 					transactionFirstSequenceId,
 					transactionLastSequenceId);
 
-				MarkUndelivered_Started(); // no action
+				previous = UndeliveredSequenceIds.GetOrAdd(aggregateKey, defaultValue);
 
-				previous = UndeliveredSequenceIds.GetOrAdd(aggregateKey, newValue);
-
-				MarkUndelivered_Got(); // no action
+				await MarkUndelivered_Got().ConfigureAwait(false); // no action
 
 				// If key was newly added to the dictionary we are done.
-				if (previous == newValue)
+				if (previous == defaultValue)
 				{
 					return;
 				}
-				// If there is already greater TransactionLastSequenceId try
-				// to fix after possible conflict and retry.
-				else if (transactionLastSequenceId < previous.TransactionLastSequenceId)
+				// If there is already greater TransactionLastSequenceId
+				// and conflict has not yet been detected we need to keep the greater one
+				else if (transactionLastSequenceId < previous.TransactionLastSequenceId
+					&& !IsUndeliveredSequenceIdsConflicted(aggregateEvents, previous))
 				{
-					if (TryFixUndeliveredSequenceIdsAfterAppendConflict(
-						new(aggregateType, aggregateId),
-						aggregateEvents,
-						previous.DeliveredSequenceId,
-						previous))
-					{
-						MarkUndelivered_UndeliveredConflictFixed(); // no action
+					await MarkUndelivered_UndeliveredConflictKept().ConfigureAwait(false); // no action
 
-						continue;
-					}
-					else
-					{
-						MarkUndelivered_UndeliveredConflictNotFixed(); // no action
-
-						return;
-					}
+					return;
 				}
-			}
-			while (!UndeliveredSequenceIds.TryUpdate(
-				key: aggregateKey,
-				newValue: new(previous.DeliveredSequenceId, transactionFirstSequenceId, transactionLastSequenceId),
-				comparisonValue: previous));
+				else if (transactionFirstSequenceId < previous.TransactionFirstSequenceId)
+				{
+					throw new ArgumentException($"'{nameof(transactionFirstSequenceId)}' < previous.TransactionFirstSequenceId",
+						nameof(transactionFirstSequenceId));
+				}
 
-			MarkUndelivered_Ended(); // no action
+				conflict = !UndeliveredSequenceIds.TryUpdate(
+					key: aggregateKey,
+					newValue: new(previous.DeliveredSequenceId, transactionFirstSequenceId, transactionLastSequenceId),
+					comparisonValue: previous);
+			}
+			while (conflict);
+
+			await MarkUndelivered_Ended().ConfigureAwait(false); // no action
 		}
 
-		private bool TryDoMarkEventsAsDeliveredComulative(
+		private async Task<bool> TryDoMarkEventsAsDeliveredComulativeAsync(
 			AggregateKey aggregateKey,
 			AggregateEvents aggregateEvents,
 			long deliveredSequenceId)
 		{
-			DoMarkDelivered_Entered(); // no action
+			await DoMarkDelivered_Entered().ConfigureAwait(false); // no action
 
 			if (UndeliveredSequenceIds.TryGetValue(aggregateKey, out var previous))
 			{
-				DoMarkDelivered_Got(); // no action
+				await DoMarkDelivered_Got().ConfigureAwait(false); // no action
 
 				if (previous.TransactionLastSequenceId < aggregateEvents.TailSequenceId)
 					throw new ApplicationException($"'{nameof(UndeliveredSequenceIds)}' is inconsistnet with '{nameof(AggregatesEvents)}'. '{nameof(AggregateSequenceIds.TransactionLastSequenceId)}' is smaller than '{nameof(AggregateEvents.TailSequenceId)}'. (aggregateKey: '{aggregateKey}')");
 
-				if (TryFixUndeliveredSequenceIdsAfterAppendConflict(aggregateKey, aggregateEvents, deliveredSequenceId, previous))
-				{
-					DoMarkDelivered_UndeliveredConflictFixed(); // no action
+				var transactionLastSequenceId = previous.TransactionLastSequenceId;
 
-					// Conflict has been fixed or another conflict detected we need to retry hence return false;
-					return false;
+				if (IsUndeliveredSequenceIdsConflicted(aggregateEvents, previous))
+				{
+					transactionLastSequenceId = aggregateEvents.TailSequenceId;
+
+					await DoMarkDelivered_UndeliveredConflictFixed().ConfigureAwait(false); // no action
+				}
+
+				// If there is already greater deliveredSequenceId keep it.
+				if (deliveredSequenceId < previous.DeliveredSequenceId)
+					deliveredSequenceId = previous.DeliveredSequenceId;
+
+				var newValue = previous with
+				{
+					DeliveredSequenceId = deliveredSequenceId,
+					TransactionLastSequenceId = transactionLastSequenceId
+				};
+
+				// If nothing has changed we are done.
+				if (newValue == previous)
+					return true;
+
+				// If all events have been delivered
+				if (transactionLastSequenceId == deliveredSequenceId)
+				{
+					return UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
+				}
+				// If some events remain to be delivered
+				else if (deliveredSequenceId < transactionLastSequenceId)
+				{
+					return UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
 				}
 				else
 				{
-					DoMarkDelivered_UndeliveredConflictNotFixed(); // no action
-
-					// If sequenceId is already marked as delivered we are done.
-					if (deliveredSequenceId <= previous.DeliveredSequenceId)
-						return true;
-
-					// If all events have been delivered
-					if (previous.TransactionLastSequenceId == deliveredSequenceId)
-					{
-						return UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
-					}
-					// If some events remain to be delivered
-					else if (deliveredSequenceId < previous.TransactionLastSequenceId)
-					{
-						var newValue = previous with { DeliveredSequenceId = deliveredSequenceId };
-						return UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
-					}
-					else
-					{
-						// At this point one of the previous exceptions should have been thrown.
-						throw new ApplicationException($"Unexpected code reached in '{nameof(TryDoMarkEventsAsDeliveredComulative)}'.");
-					}
+					// At this point one of the previous exceptions should have been thrown.
+					throw new ApplicationException($"Unexpected code reached in '{nameof(TryDoMarkEventsAsDeliveredComulativeAsync)}'.");
 				}
 			}
 			else
@@ -377,191 +401,209 @@ namespace WalletWasabi.EventSourcing
 			}
 		}
 
-		private bool TryFixUndeliveredSequenceIdsAfterAppendConflict(
+		private async Task<bool?> TryFixUndeliveredSequenceIdsAfterAppendConflictAsync(
 			AggregateKey aggregateKey,
 			AggregateEvents aggregateEvents,
 			long deliveredSequenceId,
 			AggregateSequenceIds previous)
 		{
-			TryFixUndelivered_Entered(); // no action
+			await TryFixUndelivered_Entered().ConfigureAwait(false); // no action
 
-			// If there has been conflict previously in AppendEventsAsync() and
-			// previous.TransactionLastSequenceId is too high
-			if (previous.TransactionFirstSequenceId <= aggregateEvents.TailSequenceId
-				&& aggregateEvents.TailSequenceId < previous.TransactionLastSequenceId)
+			if (IsUndeliveredSequenceIdsConflicted(aggregateEvents, previous))
 			{
+				await TryFixUndelivered_Detected().ConfigureAwait(false); // no action
+
 				if (deliveredSequenceId == aggregateEvents.TailSequenceId)
 				{
 					var success = UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
 					if (success)
-						TryFixUndelivered_Removed();
+						await TryFixUndelivered_Removed().ConfigureAwait(false); // no action
 					else
-						TryFixUndelivered_RemoveConflicted();
+						await TryFixUndelivered_RemoveConflicted().ConfigureAwait(false); // no action
+					return success;
 				}
 				else
 				{
 					var newValue = previous with { TransactionLastSequenceId = aggregateEvents.TailSequenceId };
 					var success = UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
 					if (success)
-						TryFixUndelivered_Updated();
+						await TryFixUndelivered_Updated().ConfigureAwait(false); // no action
 					else
-						TryFixUndelivered_UpdateConflicted();
+						await TryFixUndelivered_UpdateConflicted().ConfigureAwait(false); // no action
+					return success;
 				}
-				// Regardless whether it has been fixed or there is another conflict
-				// in UndeliveredSequenceIds we need to retry so return true eitherway.
-				return true;
 			}
 			else
 			{
-				return false;
+				// there is no conflict or the winner has not been decided yet.
+				return null;
 			}
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Append_Validated()
+		private bool IsUndeliveredSequenceIdsConflicted(AggregateEvents aggregateEvents, AggregateSequenceIds sequenceIds)
 		{
-			// Keep empty. To be overriden in tests.
+			// If there has been conflict previously in AppendEventsAsync()
+			return sequenceIds.TransactionFirstSequenceId <= aggregateEvents.TailSequenceId
+				// and TransactionLastSequenceId has been speculativelly set too high
+				&& aggregateEvents.TailSequenceId < sequenceIds.TransactionLastSequenceId;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Append_MarkedUndelivered()
+		#region Hooks
+
+		// Hook for parallel critical section testing.
+		protected virtual Task Append_Validated()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Append_Conflicted()
+		// Hook for parallel critical section testing.
+		protected virtual Task Append_MarkedUndelivered()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Append_Appended()
+		// Hook for parallel critical section testing.
+		protected virtual Task Append_Conflicted()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkDelivered_Started()
+		// Hook for parallel critical section testing.
+		protected virtual Task Append_Appended()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkDelivered_Got()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkDelivered_Started()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkDelivered_Ended()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkDelivered_Got()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkUndelivered_Started()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkDelivered_Conflicted()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkUndelivered_Got()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkDelivered_Ended()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkUndelivered_UndeliveredConflictFixed()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkUndelivered_Started()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkUndelivered_UndeliveredConflictNotFixed()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkUndelivered_Got()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void MarkUndelivered_Ended()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkUndelivered_UndeliveredConflictKept()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void DoMarkDelivered_Entered()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkUndelivered_Conflicted()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void DoMarkDelivered_Got()
+		// Hook for parallel critical section testing.
+		protected virtual Task MarkUndelivered_Ended()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void DoMarkDelivered_UndeliveredConflictFixed()
+		// Hook for parallel critical section testing.
+		protected virtual Task DoMarkDelivered_Entered()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void DoMarkDelivered_UndeliveredConflictNotFixed()
+		// Hook for parallel critical section testing.
+		protected virtual Task DoMarkDelivered_Got()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void TryFixUndelivered_Entered()
+		// Hook for parallel critical section testing.
+		protected virtual Task DoMarkDelivered_UndeliveredConflictFixed()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void TryFixUndelivered_Removed()
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_Entered()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void TryFixUndelivered_RemoveConflicted()
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_Detected()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void TryFixUndelivered_Updated()
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_Removed()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void TryFixUndelivered_UpdateConflicted()
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_RemoveConflicted()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
+
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_Updated()
+		{
+			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
+		}
+
+		// Hook for parallel critical section testing.
+		protected virtual Task TryFixUndelivered_UpdateConflicted()
+		{
+			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
+		}
+
+		#endregion Hooks
 	}
 }

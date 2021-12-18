@@ -262,7 +262,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(TestEventRepository.Append_AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -271,9 +271,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				var task2 = Task.Run(Append2Async);
 				await Task.WhenAll(task1, task2);
 			}
-			void WaitForConflict()
+			async Task WaitForConflict()
 			{
-				Assert.True(TestEventRepository.Append_ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_ConflictedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 			}
 			TestEventRepository.Append_AppendedCallback = WaitForConflict;
 
@@ -302,7 +302,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(TestEventRepository.Append_AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -311,9 +311,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				var task2 = Task.Run(Append2Async);
 				await Task.WhenAll(task1, task2);
 			}
-			void WaitForNoConflict()
+			async Task WaitForNoConflict()
 			{
-				Assert.False(TestEventRepository.Append_ConflictedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.False(await TestEventRepository.Append_ConflictedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 			}
 			TestEventRepository.Append_AppendedCallback = WaitForNoConflict;
 
@@ -342,10 +342,10 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			IReadOnlyList<WrappedEvent> result = ImmutableList<WrappedEvent>.Empty;
 			IReadOnlyList<WrappedEvent> result2 = ImmutableList<WrappedEvent>.Empty;
-			void ListCallback()
+			async Task ListCallback()
 			{
-				result = EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1").Result;
-				result2 = EventRepository.ListUndeliveredEventsAsync().Result
+				result = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1");
+				result2 = (await EventRepository.ListUndeliveredEventsAsync())
 					.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
 					.WrappedEvents;
 			}
@@ -493,7 +493,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_1", deliveredSequenceId);
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "MY_ID_1", deliveredSequenceId);
 			}
 
 			// Assert
@@ -632,11 +632,11 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task ActionA_Async()
 			{
-				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_A", aDeliveredSequenceIds);
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "MY_ID_A", aDeliveredSequenceIds);
 			}
 			async Task ActionB_Async()
 			{
-				await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "MY_ID_B", bDeliveredSequenceIds);
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "MY_ID_B", bDeliveredSequenceIds);
 			}
 
 			// Assert
@@ -680,13 +680,16 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		}
 
 		[Theory]
-		[InlineData(2, 1, 1, false)]
-		[InlineData(3, 2, 1, true)]
-		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_NoConflict_Async(
+		[InlineData(2, 1, 1, false, false)]
+		[InlineData(3, 2, 1, true, false)]
+		[InlineData(4, 2, 1, true, true)]
+		[InlineData(3, 1, 1, false, true)]
+		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_Async(
 			int conflictedEvents,
 			int appendedEvents,
 			int confirmedSequenceId,
-			bool update)
+			bool updateInTryFix,
+			bool conflictInTryFix)
 		{
 			// Arrange
 
@@ -698,41 +701,101 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					new(1, "a1"),
 					new(2, "a2"),
 					new(3, "a3"),
+					new(4, "a4"),
 				}.Take(conflictedEvents));
 			}
 			// After first AppendEventsAsync() call marks events as undelivered but before
 			// they are actually appended to the repository
-			TestEventRepository.Append_MarkedUndeliveredCallback = () =>
+			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
 			{
 				TestEventRepository.Append_MarkedUndeliveredCallback = null;
-				Task.Run(async () =>
+				// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
 				{
-					// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
-					await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+					new(1, "b1"),
+					new(2, "b2"),
+				}.Take(appendedEvents));
+				if (conflictInTryFix)
+				{
+					TestEventRepository.TryFixUndelivered_DetectedCallback = async () =>
 					{
-						new(1, "b1"),
-						new(2, "b2"),
-					}.Take(appendedEvents));
-					await EventRepository.MarkEventsAsDeliveredCumulative(nameof(TestRoundAggregate), "ID_1", confirmedSequenceId);
-				}).Wait();
+						TestEventRepository.TryFixUndelivered_DetectedCallback = null;
+						await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+						{
+							new(appendedEvents + 1, $"c{appendedEvents + 1}"),
+						});
+						appendedEvents++;
+					};
+				}
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "ID_1", confirmedSequenceId);
 			};
 
 			// Assert
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendAsync);
 			(await TestEventRepository.DoMarkDelivered_UndeliveredConflictFixedSemaphore.WaitAsync(0))
 				.ShouldBeTrue();
-			(await TestEventRepository.TryFixUndelivered_UpdatedSemaphore.WaitAsync(0))
-				.ShouldBe(update);
-			(await TestEventRepository.TryFixUndelivered_RemovedSemaphore.WaitAsync(0))
-				.ShouldBe(!update);
-			(await TestEventRepository.TryFixUndelivered_UpdateConflictedSemaphore.WaitAsync(0))
-				.ShouldBeFalse();
-			(await TestEventRepository.TryFixUndelivered_RemoveConflictedSemaphore.WaitAsync(0))
-				.ShouldBeFalse();
+			if (conflictInTryFix)
+			{
+				(await TestEventRepository.TryFixUndelivered_UpdateConflictedSemaphore.WaitAsync(0))
+					.ShouldBe(updateInTryFix);
+				(await TestEventRepository.TryFixUndelivered_RemoveConflictedSemaphore.WaitAsync(0))
+					.ShouldBe(!updateInTryFix);
+			}
+			else
+			{
+				(await TestEventRepository.TryFixUndelivered_UpdatedSemaphore.WaitAsync(0))
+					.ShouldBe(updateInTryFix);
+				(await TestEventRepository.TryFixUndelivered_RemovedSemaphore.WaitAsync(0))
+					.ShouldBe(!updateInTryFix);
+			}
 			(await EventRepository.ListUndeliveredEventsAsync())
 				.SelectMany(a => a.WrappedEvents)
 				.Count()
 				.ShouldBe(appendedEvents - confirmedSequenceId);
+		}
+
+		[Theory]
+		[InlineData(4, 1)]
+		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_2_Async(
+			int conflictedEvents,
+			int appendedEvents)
+		{
+			// Arrange
+
+			// Act
+			async Task AppendAsync()
+			{
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+				{
+					new(1, "a1"),
+					new(2, "a2"),
+					new(3, "a3"),
+					new(4, "a4"),
+				}.Take(conflictedEvents));
+			}
+			// After first AppendEventsAsync() call marks events as undelivered but before
+			// they are actually appended to the repository
+			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
+			{
+				TestEventRepository.Append_MarkedUndeliveredCallback = null;
+				// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+				{
+					new(1, "b1"),
+				}.Take(appendedEvents));
+			};
+			// After second AppendEventsAsync() call appends events but before conflict of the first call
+			TestEventRepository.Append_AppendedCallback = async () =>
+			{
+				TestEventRepository.Append_AppendedCallback = null;
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+				{
+					new(2, "c2"),
+				});
+			};
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendAsync);
 		}
 
 		public void Dispose()

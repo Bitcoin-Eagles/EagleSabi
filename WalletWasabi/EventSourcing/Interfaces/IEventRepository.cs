@@ -51,7 +51,7 @@ namespace WalletWasabi.EventSourcing.Interfaces
 		/// <param name="aggregateType">Type of aggregate</param>
 		/// <param name="aggregateId">Id of aggregate</param>
 		/// <param name="deliveredSequenceId">sequenceId of last delivered event of the aggregate</param>
-		public Task MarkEventsAsDeliveredCumulative(
+		public Task MarkEventsAsDeliveredCumulativeAsync(
 			string aggregateType,
 			string aggregateId,
 			long deliveredSequenceId);
@@ -60,7 +60,7 @@ namespace WalletWasabi.EventSourcing.Interfaces
 		/// Lists undelivered pending events to be delivered (e.g. to message bus) for all aggregates.
 		/// Event is considered undelivered if it has been appended
 		/// by <see cref="AppendEventsAsync(string, string, IEnumerable{WrappedEvent})"/>
-		/// and not yet marked as delivered by <see cref="MarkEventsAsDeliveredCumulative(string, string, long)"/>.
+		/// and not yet marked as delivered by <see cref="MarkEventsAsDeliveredCumulativeAsync(string, string, long)"/>.
 		/// </summary>
 		/// <returns>list of <see cref="AggregateUndeliveredEvents"/></returns>
 		public Task<IReadOnlyList<AggregateUndeliveredEvents>> ListUndeliveredEventsAsync(int? maxCount = null);
