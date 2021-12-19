@@ -19,6 +19,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public SemaphoreSlim Append_ConflictedSemaphore { get; } = new(0);
 		public SemaphoreSlim Append_AppendedSemaphore { get; } = new(0);
 
+		public SemaphoreSlim MarkUndelivered_Started_Semaphore { get; } = new(0);
+		public SemaphoreSlim MarkUndelivered_Got_Semaphore { get; } = new(0);
+		public SemaphoreSlim MarkUndelivered_UndeliveredConflictKept_Semaphore { get; } = new(0);
+		public SemaphoreSlim MarkUndelivered_Conflicted_Semaphore { get; } = new(0);
+		public SemaphoreSlim MarkUndelivered_Ended_Semaphore { get; } = new(0);
+
 		public SemaphoreSlim DoMarkDelivered_UndeliveredConflictFixedSemaphore { get; } = new(0);
 
 		public SemaphoreSlim TryFixUndelivered_DetectedSemaphore { get; } = new(0);
@@ -31,6 +37,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public Func<Task>? Append_MarkedUndeliveredCallback { get; set; }
 		public Func<Task>? Append_ConflictedCallback { get; set; }
 		public Func<Task>? Append_AppendedCallback { get; set; }
+
+		public Func<Task>? MarkUndelivered_Started_Callback { get; set; }
+		public Func<Task>? MarkUndelivered_Got_Callback { get; set; }
+		public Func<Task>? MarkUndelivered_UndeliveredConflictKept_Callback { get; set; }
+		public Func<Task>? MarkUndelivered_Conflicted_Callback { get; set; }
+		public Func<Task>? MarkUndelivered_Ended_Callback { get; set; }
 
 		public Func<Task>? DoMarkDelivered_UndeliveredConflictFixedCallback { get; set; }
 
@@ -74,6 +86,51 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 			Append_AppendedSemaphore.Release();
 			if (Append_AppendedCallback is not null)
 				await Append_AppendedCallback.Invoke();
+		}
+
+		protected override async Task MarkUndelivered_Started()
+		{
+			await base.MarkUndelivered_Started();
+			Output.WriteLine(nameof(MarkUndelivered_Started));
+			MarkUndelivered_Started_Semaphore.Release();
+			if (MarkUndelivered_Started_Callback is not null)
+				await MarkUndelivered_Started_Callback.Invoke();
+		}
+
+		protected override async Task MarkUndelivered_Got()
+		{
+			await base.MarkUndelivered_Got();
+			Output.WriteLine(nameof(MarkUndelivered_Got));
+			MarkUndelivered_Got_Semaphore.Release();
+			if (MarkUndelivered_Got_Callback is not null)
+				await MarkUndelivered_Got_Callback.Invoke();
+		}
+
+		protected override async Task MarkUndelivered_UndeliveredConflictKept()
+		{
+			await base.MarkUndelivered_UndeliveredConflictKept();
+			Output.WriteLine(nameof(MarkUndelivered_UndeliveredConflictKept));
+			MarkUndelivered_UndeliveredConflictKept_Semaphore.Release();
+			if (MarkUndelivered_UndeliveredConflictKept_Callback is not null)
+				await MarkUndelivered_UndeliveredConflictKept_Callback.Invoke();
+		}
+
+		protected override async Task MarkUndelivered_Conflicted()
+		{
+			await base.MarkUndelivered_Conflicted();
+			Output.WriteLine(nameof(MarkUndelivered_Conflicted));
+			MarkUndelivered_Conflicted_Semaphore.Release();
+			if (MarkUndelivered_Conflicted_Callback is not null)
+				await MarkUndelivered_Conflicted_Callback.Invoke();
+		}
+
+		protected override async Task MarkUndelivered_Ended()
+		{
+			await base.MarkUndelivered_Ended();
+			Output.WriteLine(nameof(MarkUndelivered_Ended));
+			MarkUndelivered_Ended_Semaphore.Release();
+			if (MarkUndelivered_Ended_Callback is not null)
+				await MarkUndelivered_Ended_Callback.Invoke();
 		}
 
 		protected override async Task DoMarkDelivered_UndeliveredConflictFixed()
@@ -141,6 +198,18 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 			Append_MarkedUndeliveredCallback = null;
 			Append_ConflictedCallback = null;
 			Append_AppendedCallback = null;
+
+			MarkUndelivered_Started_Semaphore.Dispose();
+			MarkUndelivered_Got_Semaphore.Dispose();
+			MarkUndelivered_UndeliveredConflictKept_Semaphore.Dispose();
+			MarkUndelivered_Conflicted_Semaphore.Dispose();
+			MarkUndelivered_Ended_Semaphore.Dispose();
+
+			MarkUndelivered_Started_Callback = null;
+			MarkUndelivered_Got_Callback = null;
+			MarkUndelivered_UndeliveredConflictKept_Callback = null;
+			MarkUndelivered_Conflicted_Callback = null;
+			MarkUndelivered_Ended_Callback = null;
 
 			DoMarkDelivered_UndeliveredConflictFixedSemaphore.Dispose();
 
