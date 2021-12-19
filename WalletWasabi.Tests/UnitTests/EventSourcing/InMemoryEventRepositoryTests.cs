@@ -2,11 +2,13 @@ using Shouldly;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.EventSourcing.Records;
 using WalletWasabi.Helpers;
+using WalletWasabi.Tests.Helpers;
 using WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain;
 using Xunit;
 using Xunit.Abstractions;
@@ -15,6 +17,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 {
 	public class InMemoryEventRepositoryTests : IDisposable
 	{
+		private const string ID_1 = "ID_1";
+		private const string ID_2 = "ID_2";
 		private readonly TimeSpan _semaphoreWaitTimeout = TimeSpan.FromSeconds(5);
 
 		public InMemoryEventRepositoryTests(ITestOutputHelper output)
@@ -33,13 +37,13 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var events = Array.Empty<WrappedEvent>();
 
 			// Act
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Assert
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 				.SequenceEqual(events));
 			Assert.DoesNotContain(await EventRepository.ListUndeliveredEventsAsync(),
-				a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1");
+				a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1);
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
 				.SequenceEqual(Array.Empty<string>()));
 		}
@@ -54,17 +58,17 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			};
 
 			// Act
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Assert
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
-				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 				.WrappedEvents
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
-				.SequenceEqual(new[] { "MY_ID_1" }));
+				.SequenceEqual(new[] { ID_1 }));
 		}
 
 		[Fact]
@@ -78,17 +82,17 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			};
 
 			// Act
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Assert
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
-				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 				.WrappedEvents
 				.SequenceEqual(events));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
-				.SequenceEqual(new[] { "MY_ID_1" }));
+				.SequenceEqual(new[] { ID_1 }));
 		}
 
 		[Fact]
@@ -103,7 +107,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events).ConfigureAwait(false);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events).ConfigureAwait(false);
 			}
 
 			// Assert
@@ -123,7 +127,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 			}
 
 			// Assert
@@ -141,12 +145,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			{
 				new TestWrappedEvent(1)
 			};
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 			}
 
 			// Assert
@@ -231,19 +235,19 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events1);
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events1);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2);
 			}
 
 			// Assert
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(ActionAsync);
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 				.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
-				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
-				.SequenceEqual(new[] { "MY_ID_1" }));
+				.SequenceEqual(new[] { ID_1 }));
 		}
 
 #if DEBUG
@@ -258,12 +262,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task Append1Async()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events1);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events1);
 			}
 			async Task Append2Async()
 			{
 				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2!);
 			}
 			async Task AppendInParallelAsync()
 			{
@@ -279,13 +283,13 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 
 			// Assert
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendInParallelAsync);
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 						.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
-				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
-				.SequenceEqual(new[] { "MY_ID_1" }));
+				.SequenceEqual(new[] { ID_1 }));
 		}
 
 		[Fact]
@@ -298,12 +302,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Act
 			async Task Append1Async()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events1);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events1);
 			}
 			async Task Append2Async()
 			{
 				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2!);
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2!);
 			}
 			async Task AppendInParallelAsync()
 			{
@@ -320,13 +324,13 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// no conflict
 			await AppendInParallelAsync();
 
-			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1"))
+			Assert.True((await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1))
 						.Cast<TestWrappedEvent>().SequenceEqual(events1.Concat(events2)));
 			Assert.True((await EventRepository.ListUndeliveredEventsAsync())
-				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+				.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 				.WrappedEvents.Cast<TestWrappedEvent>().SequenceEqual(events1.Concat(events2)));
 			Assert.True((await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate)))
-				.SequenceEqual(new[] { "MY_ID_1" }));
+				.SequenceEqual(new[] { ID_1 }));
 		}
 
 		[Theory]
@@ -337,16 +341,16 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Arrange
 			var events1 = new[] { new TestWrappedEvent(1, "a"), new TestWrappedEvent(2, "a") };
 			var events2 = new[] { new TestWrappedEvent(3, "b"), new TestWrappedEvent(4, "b") };
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events1);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events1);
 
 			// Act
 			IReadOnlyList<WrappedEvent> result = ImmutableList<WrappedEvent>.Empty;
 			IReadOnlyList<WrappedEvent> result2 = ImmutableList<WrappedEvent>.Empty;
 			async Task ListCallback()
 			{
-				result = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), "MY_ID_1");
+				result = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
 				result2 = (await EventRepository.ListUndeliveredEventsAsync())
-					.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == "MY_ID_1")
+					.First(a => a.AggregateType == nameof(TestRoundAggregate) && a.AggregateId == ID_1)
 					.WrappedEvents;
 			}
 			switch (listOnCallback)
@@ -362,7 +366,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				default:
 					throw new ApplicationException($"unexpected value listOnCallback: '{listOnCallback}'");
 			}
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events2);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2);
 
 			// Assert
 			var expected = events1.AsEnumerable();
@@ -402,11 +406,11 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				new TestWrappedEvent(1, "a"), new TestWrappedEvent(2, "a"),
 				new TestWrappedEvent(3, "b"), new TestWrappedEvent(4, "b")
 			};
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Act
 			var result = await EventRepository.ListEventsAsync(
-				nameof(TestRoundAggregate), "MY_ID_1", afterSequenceId, limit);
+				nameof(TestRoundAggregate), ID_1, afterSequenceId, limit);
 
 			// Assert
 			Assert.True(result.Count <= limit);
@@ -422,14 +426,14 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				new TestWrappedEvent(1, "a"), new TestWrappedEvent(2, "a"),
 				new TestWrappedEvent(3, "b"), new TestWrappedEvent(4, "b")
 			};
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_2", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_2, events);
 
 			// Act
 			var result = await EventRepository.ListAggregateIdsAsync(nameof(TestRoundAggregate));
 
 			// Assert
-			Assert.True(result.SequenceEqual(new[] { "MY_ID_1", "MY_ID_2" }));
+			Assert.True(result.SequenceEqual(new[] { ID_1, ID_2 }));
 		}
 
 		[Theory]
@@ -437,11 +441,11 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		[InlineData("0", 1)]
 		[InlineData("0", 2)]
 		[InlineData("0", 3)]
-		[InlineData("MY_ID_1", 0)]
-		[InlineData("MY_ID_1", 1)]
-		[InlineData("MY_ID_1", 2)]
-		[InlineData("MY_ID_2", 0)]
-		[InlineData("MY_ID_2", 1)]
+		[InlineData(ID_1, 0)]
+		[InlineData(ID_1, 1)]
+		[InlineData(ID_1, 2)]
+		[InlineData(ID_2, 0)]
+		[InlineData(ID_2, 1)]
 		[InlineData("3", 0)]
 		[InlineData("3", 1)]
 		public async Task ListAggregateIdsAsync_OptionalArguments_Async(string afterAggregateId, int limit)
@@ -452,8 +456,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				new TestWrappedEvent(1, "a"), new TestWrappedEvent(2, "a"),
 				new TestWrappedEvent(3, "b"), new TestWrappedEvent(4, "b")
 			};
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_2", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_2, events);
 
 			// Act
 			var result = await EventRepository.ListAggregateIdsAsync(
@@ -488,12 +492,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				new TestWrappedEvent(2),
 				new TestWrappedEvent(3),
 			}.Take(eventCount).ToArray();
-			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "MY_ID_1", events);
+			await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events);
 
 			// Act
 			async Task ActionAsync()
 			{
-				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "MY_ID_1", deliveredSequenceId);
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), ID_1, deliveredSequenceId);
 			}
 
 			// Assert
@@ -515,7 +519,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				{
 					undeliveredEvents.Count.ShouldBe(1);
 					undeliveredEvents[0].AggregateType.ShouldBe(nameof(TestRoundAggregate));
-					undeliveredEvents[0].AggregateId.ShouldBe("MY_ID_1");
+					undeliveredEvents[0].AggregateId.ShouldBe(ID_1);
 					undeliveredEvents[0].WrappedEvents.Cast<TestWrappedEvent>().ShouldBe(events.Skip(deliveredSequenceId));
 				}
 				else if (deliveredSequenceId == eventCount)
@@ -679,17 +683,236 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			await AssertAsync(bEvents, "MY_ID_B", bDeliveredSequenceIds, bEventsCount, ActionB_Async);
 		}
 
+		private Func<Task> PrepareAppendWithConflict(int conflictedEvents, int appendedEvents, Func<Task>? beforeAppend = null, string id = ID_1)
+		{
+			Guard.InRangeAndNotNull(nameof(conflictedEvents), conflictedEvents, 0, 4);
+			Guard.InRangeAndNotNull(nameof(appendedEvents), appendedEvents, 0, 3);
+
+			var appendAsync = async () =>
+			{
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), id, new TestWrappedEvent[]
+				{
+					new(1, "a1"),
+					new(2, "a2"),
+					new(3, "a3"),
+					new(4, "a4"),
+				}.Take(conflictedEvents));
+			};
+
+			// After first AppendEventsAsync() call marks events as undelivered but before
+			// they are actually appended to the repository
+			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
+			{
+				TestEventRepository.Append_MarkedUndeliveredCallback = null;
+
+				if (beforeAppend is not null)
+					await beforeAppend.Invoke();
+
+				// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
+				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), id, new TestWrappedEvent[]
+				{
+					new(1, "b1"),
+					new(2, "b2"),
+					new(3, "b3"),
+				}.Take(appendedEvents));
+			};
+
+			return appendAsync;
+		}
+
+		private async Task Assert_MarkUndeliveredSemaphore_Async(
+			int? started = null,
+			int? got = null,
+			int? undeliveredConflictKept = null,
+			int? conflicted = null,
+			int? ended = null)
+		{
+			if (started.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkUndelivered_Started_Semaphore,
+					started.Value,
+					nameof(TestEventRepository.MarkUndelivered_Started_Semaphore));
+			}
+			if (got.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkUndelivered_Got_Semaphore,
+					got.Value,
+					nameof(TestEventRepository.MarkUndelivered_Got_Semaphore));
+			}
+			if (undeliveredConflictKept.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkUndelivered_UndeliveredConflictKept_Semaphore,
+					undeliveredConflictKept.Value,
+					nameof(TestEventRepository.MarkUndelivered_UndeliveredConflictKept_Semaphore));
+			}
+			if (conflicted.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkUndelivered_Conflicted_Semaphore,
+					conflicted.Value,
+					nameof(TestEventRepository.MarkUndelivered_Conflicted_Semaphore));
+			}
+			if (ended.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkUndelivered_Ended_Semaphore,
+					ended.Value,
+					nameof(TestEventRepository.MarkUndelivered_Ended_Semaphore));
+			}
+		}
+
+		private async Task AssertSemaphoreAsync(SemaphoreSlim semaphore, int expected, string? name = null)
+		{
+			Guard.MinimumAndNotNull(nameof(expected), expected, 0);
+			if (expected == 0)
+			{
+				(await semaphore.WaitAsync(0))
+					.ShouldBeFalse($"semaphore '{name}' was expected to be '{expected}' but it wasn't");
+			}
+			else
+			{
+				for (var i = 0; i < expected; i++)
+				{
+					(await semaphore.WaitAsync(0))
+						.ShouldBeTrue($"semaphore '{name}' was expected to be '{expected}' but it wasn't");
+				}
+				(await semaphore.WaitAsync(0))
+					.ShouldBeFalse($"semaphore '{name}' was expected to be '{expected}' but it wasn't");
+			}
+		}
+
+		[Fact]
+		public async Task MarkUndeliveredSequenceIdsAsync_AppendConflict_ReturnOnPreviouEqDefault_Async()
+		{
+			// Arrange
+			Func<Task> appendAsync = PrepareAppendWithConflict(1, 1);
+
+			// Act
+			async Task Act()
+			{
+				await appendAsync.Invoke();
+			}
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(Act);
+			await Assert_MarkUndeliveredSemaphore_Async(
+				started: 2,
+				undeliveredConflictKept: 0,
+				ended: 0);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(1);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			undeliveredEvents.Count.ShouldBe(1);
+			undeliveredEvents[0].WrappedEvents.Count.ShouldBe(1);
+		}
+
+		[Fact]
+		public async Task MarkUndeliveredSequenceIdsAsync_AppendConflict_UndeliveredConflictKept_Async()
+		{
+			// Arrange
+			Func<Task> appendAsync = PrepareAppendWithConflict(2, 1);
+
+			// Act
+			async Task Act()
+			{
+				await appendAsync.Invoke();
+			}
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(Act);
+			await Assert_MarkUndeliveredSemaphore_Async(
+				undeliveredConflictKept: 1,
+				ended: 0);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(1);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			undeliveredEvents.Count.ShouldBe(1);
+			undeliveredEvents[0].WrappedEvents.Count.ShouldBe(1);
+		}
+
+		[Fact]
+		public async Task MarkUndeliveredSequenceIdsAsync_AppendConflict_Updated_Async()
+		{
+			// Arrange
+			Func<Task> appendAsync = PrepareAppendWithConflict(1, 2);
+
+			// Act
+			async Task Act()
+			{
+				await appendAsync.Invoke();
+			}
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(Act);
+			await Assert_MarkUndeliveredSemaphore_Async(
+				conflicted: 0,
+				ended: 1);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(2);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			undeliveredEvents.Count.ShouldBe(1);
+			undeliveredEvents[0].WrappedEvents.Count.ShouldBe(2);
+		}
+
+		[Fact]
+		public async Task MarkUndeliveredSequenceIdsAsync_AppendConflict_Conflicted_Async()
+		{
+			// Arrange
+			Func<Task> appendAsync = PrepareAppendWithConflict(1, 3,
+				() =>
+				{
+					TestEventRepository.MarkUndelivered_Got_Callback = async () =>
+					{
+						TestEventRepository.MarkUndelivered_Got_Callback = null;
+
+						TestEventRepository.Append_MarkedUndeliveredCallback = () =>
+						{
+							TestEventRepository.Append_MarkedUndeliveredCallback = null;
+
+							throw new TestException();
+						};
+
+						await Assert.ThrowsAsync<TestException>(async () => await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+						{
+							new(1, "c1"),
+							new(2, "c2"),
+						}));
+					};
+					return Task.CompletedTask;
+				});
+
+			// Act
+			async Task Act()
+			{
+				await appendAsync.Invoke();
+			}
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(Act);
+			await Assert_MarkUndeliveredSemaphore_Async(
+				conflicted: 1,
+				ended: 2);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(3);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			undeliveredEvents.Count.ShouldBe(1);
+			undeliveredEvents[0].WrappedEvents.Count.ShouldBe(3);
+		}
+
 		[Theory]
 		[InlineData(2, 1, 1, false, false)]
 		[InlineData(3, 2, 1, true, false)]
 		[InlineData(4, 2, 1, true, true)]
 		[InlineData(3, 1, 1, false, true)]
 		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_Async(
-			int conflictedEvents,
-			int appendedEvents,
-			int confirmedSequenceId,
-			bool updateInTryFix,
-			bool conflictInTryFix)
+		int conflictedEvents,
+		int appendedEvents,
+		int confirmedSequenceId,
+		bool updateInTryFix,
+		bool conflictInTryFix)
 		{
 			// Arrange
 
@@ -748,10 +971,10 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				(await TestEventRepository.TryFixUndelivered_RemovedSemaphore.WaitAsync(0))
 					.ShouldBe(!updateInTryFix);
 			}
-			(await EventRepository.ListUndeliveredEventsAsync())
-				.SelectMany(a => a.WrappedEvents)
-				.Count()
-				.ShouldBe(appendedEvents - confirmedSequenceId);
+		(await EventRepository.ListUndeliveredEventsAsync())
+			.SelectMany(a => a.WrappedEvents)
+			.Count()
+			.ShouldBe(appendedEvents - confirmedSequenceId);
 		}
 
 		[Theory]
