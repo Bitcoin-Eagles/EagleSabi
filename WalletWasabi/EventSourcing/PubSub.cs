@@ -18,9 +18,11 @@ namespace WalletWasabi.EventSourcing
 		public async Task Publish<TMessage>(TMessage message)
 		{
 			Guard.NotNull(nameof(message), message);
+
 			if (Subscribers.TryGetValue(typeof(TMessage), out var subscribers))
 			{
-				await subscribers.ForEachAggregateExceptionsAsync(a => a.Invoke(message!)).ConfigureAwait(false);
+				await subscribers.ForEachAggregateExceptionsAsync(a => a.Invoke(message!))
+					.ConfigureAwait(false);
 			}
 		}
 
