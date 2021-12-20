@@ -965,123 +965,46 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			undeliveredEvents[0].WrappedEvents.Count.ShouldBe(preEvents - preConfirm + 1);
 		}
 
-		[Theory]
-		[InlineData(2, 1, 1, false, false)]
-		[InlineData(3, 2, 1, true, false)]
-		[InlineData(4, 2, 1, true, true)]
-		[InlineData(3, 1, 1, false, true)]
-		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_Async(
-		int conflictedEvents,
-		int appendedEvents,
-		int confirmedSequenceId,
-		bool updateInTryFix,
-		bool conflictInTryFix)
+		[Fact]
+		public async Task ListUndeliveredEventsAsync_AppendConflict_EmptyResult_Async()
 		{
 			// Arrange
-
-			// Act
-			async Task AppendAsync()
-			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
+			Func<Task>? beforeAppend = null;
+			Func<Task> appendAsync = PrepareAppendWithConflict(2, 1,
+				beforeAppend: () =>
 				{
-					new(1, "a1"),
-					new(2, "a2"),
-					new(3, "a3"),
-					new(4, "a4"),
-				}.Take(conflictedEvents));
-			}
-			// After first AppendEventsAsync() call marks events as undelivered but before
-			// they are actually appended to the repository
-			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
-			{
-				TestEventRepository.Append_MarkedUndeliveredCallback = null;
-				// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
-				{
-					new(1, "b1"),
-					new(2, "b2"),
-				}.Take(appendedEvents));
-				if (conflictInTryFix)
-				{
-					TestEventRepository.TryFixUndelivered_DetectedCallback = async () =>
+					TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
 					{
-						TestEventRepository.TryFixUndelivered_DetectedCallback = null;
-						await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
-						{
-							new(appendedEvents + 1, $"c{appendedEvents + 1}"),
-						});
-						appendedEvents++;
+						TestEventRepository.Append_MarkedUndeliveredCallback = null;
+
+						await beforeAppend!.Invoke();
 					};
-				}
-				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), "ID_1", confirmedSequenceId);
-			};
 
-			// Assert
-			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendAsync);
-			(await TestEventRepository.DoMarkDelivered_UndeliveredConflictFixedSemaphore.WaitAsync(0))
-				.ShouldBeTrue();
-			if (conflictInTryFix)
-			{
-				(await TestEventRepository.TryFixUndelivered_UpdateConflictedSemaphore.WaitAsync(0))
-					.ShouldBe(updateInTryFix);
-				(await TestEventRepository.TryFixUndelivered_RemoveConflictedSemaphore.WaitAsync(0))
-					.ShouldBe(!updateInTryFix);
-			}
-			else
-			{
-				(await TestEventRepository.TryFixUndelivered_UpdatedSemaphore.WaitAsync(0))
-					.ShouldBe(updateInTryFix);
-				(await TestEventRepository.TryFixUndelivered_RemovedSemaphore.WaitAsync(0))
-					.ShouldBe(!updateInTryFix);
-			}
-		(await EventRepository.ListUndeliveredEventsAsync())
-			.SelectMany(a => a.WrappedEvents)
-			.Count()
-			.ShouldBe(appendedEvents - confirmedSequenceId);
-		}
-
-		[Theory]
-		[InlineData(4, 1)]
-		public async Task MarkUndeliveredSequenceIds_TryFixUndeliveredSequenceIdsAfterAppendConflict_RemoveUpdate_2_Async(
-			int conflictedEvents,
-			int appendedEvents)
-		{
-			// Arrange
+					return Task.CompletedTask;
+				});
+			IReadOnlyList<AggregateUndeliveredEvents>? undeliveredEvents1 = null;
+			IReadOnlyList<WrappedEvent>? events1 = null;
 
 			// Act
-			async Task AppendAsync()
+			async Task ActAsync()
 			{
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
-				{
-					new(1, "a1"),
-					new(2, "a2"),
-					new(3, "a3"),
-					new(4, "a4"),
-				}.Take(conflictedEvents));
+				await appendAsync.Invoke();
 			}
-			// After first AppendEventsAsync() call marks events as undelivered but before
-			// they are actually appended to the repository
-			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
+			beforeAppend = async () =>
 			{
-				TestEventRepository.Append_MarkedUndeliveredCallback = null;
-				// Competing append will succeed and trigger conflict of the first AppendEventsAsync() call
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
-				{
-					new(1, "b1"),
-				}.Take(appendedEvents));
-			};
-			// After second AppendEventsAsync() call appends events but before conflict of the first call
-			TestEventRepository.Append_AppendedCallback = async () =>
-			{
-				TestEventRepository.Append_AppendedCallback = null;
-				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), "ID_1", new TestWrappedEvent[]
-				{
-					new(2, "c2"),
-				});
+				events1 = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+				undeliveredEvents1 = await EventRepository.ListUndeliveredEventsAsync();
 			};
 
 			// Assert
-			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendAsync);
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(ActAsync);
+			undeliveredEvents1.ShouldNotBeNull();
+			undeliveredEvents1.Count.ShouldBe(0);
+			var events2 = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events2.Count.ShouldBe(1);
+			var undeliveredEvents2 = await EventRepository.ListUndeliveredEventsAsync();
+			undeliveredEvents2.Count.ShouldBe(1);
+			undeliveredEvents2[0].WrappedEvents.Count.ShouldBe(1);
 		}
 
 		public void Dispose()
