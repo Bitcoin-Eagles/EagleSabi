@@ -46,12 +46,9 @@ namespace WalletWasabi.EventSourcing
 				}
 				catch (OptimisticConcurrencyException)
 				{
-					// No action
-					Conflicted();
+					Conflicted(); // No action
 					if (tries <= 0)
-					{
 						throw;
-					}
 					optimisticConflict = true;
 				}
 			} while (optimisticConflict && tries > 0);
@@ -84,9 +81,7 @@ namespace WalletWasabi.EventSourcing
 			}
 
 			if (!CommandProcessorFactory.TryCreate(aggregateType, out var processor))
-			{
 				throw new AssertionFailedException($"CommandProcessor is missing for aggregate type '{aggregateType}'.");
-			}
 
 			Result? result = null;
 			try
@@ -102,14 +97,17 @@ namespace WalletWasabi.EventSourcing
 						aggregate.Apply(newEvent);
 					}
 
-					// No ation
-					Prepared();
+					Prepared(); // No ation
 
 					await EventRepository.AppendEventsAsync(aggregateType, aggregateId, wrappedEvents)
 						.ConfigureAwait(false);
 
-					// No action
-					Appended();
+					Appended(); // No action
+
+#warning TODO:
+					// TODO: Push for new event publishing
+
+					Pushed(); // No action
 
 					return new WrappedResult(sequenceId, wrappedEvents.AsReadOnly(), aggregate.State);
 				}
@@ -146,9 +144,7 @@ namespace WalletWasabi.EventSourcing
 		private IAggregate ApplyEvents(string aggregateType, IReadOnlyList<WrappedEvent> events)
 		{
 			if (!AggregateFactory.TryCreate(aggregateType, out var aggregate))
-			{
 				throw new InvalidOperationException($"AggregateFactory is missing for aggregate type '{aggregateType}'.");
-			}
 
 			foreach (var wrappedEvent in events)
 			{
@@ -182,6 +178,13 @@ namespace WalletWasabi.EventSourcing
 		// Hook for parallel critical section testing in DEBUG build only.
 		[Conditional("DEBUG")]
 		protected virtual void Appended()
+		{
+			// Keep empty. To be overriden in tests.
+		}
+
+		// Hook for parallel critical section testing in DEBUG build only.
+		[Conditional("DEBUG")]
+		protected virtual void Pushed()
 		{
 			// Keep empty. To be overriden in tests.
 		}
