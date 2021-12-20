@@ -203,19 +203,7 @@ namespace WalletWasabi.EventSourcing
 					.ConfigureAwait(false);
 
 				if (0 < events.Count)
-				{
 					result.Add(new AggregateUndeliveredEvents(key.AggregateType, key.AggregateId, events));
-				}
-				else if (AggregatesEvents.TryGetValue(key.AggregateType, out var aggregatesEvents)
-					&& aggregatesEvents.TryGetValue(key.AggregateId, out var aggregateEvents))
-				{
-					await TryFixUndeliveredSequenceIdsAfterAppendConflictAsync(
-						key,
-						aggregateEvents,
-						sequenceIds.DeliveredSequenceId,
-						sequenceIds)
-						.ConfigureAwait(false);
-				}
 
 				maxCount -= events.Count;
 				if (maxCount <= 0)
@@ -398,45 +386,6 @@ namespace WalletWasabi.EventSourcing
 			{
 				// 'deliveredSequenceId' has been already marked so we are done.
 				return true;
-			}
-		}
-
-		private async Task<bool?> TryFixUndeliveredSequenceIdsAfterAppendConflictAsync(
-			AggregateKey aggregateKey,
-			AggregateEvents aggregateEvents,
-			long deliveredSequenceId,
-			AggregateSequenceIds previous)
-		{
-			await TryFixUndelivered_Entered().ConfigureAwait(false); // no action
-
-			if (IsUndeliveredSequenceIdsConflicted(aggregateEvents, previous))
-			{
-				await TryFixUndelivered_Detected().ConfigureAwait(false); // no action
-
-				if (deliveredSequenceId == aggregateEvents.TailSequenceId)
-				{
-					var success = UndeliveredSequenceIds.TryRemove(KeyValuePair.Create(aggregateKey, previous));
-					if (success)
-						await TryFixUndelivered_Removed().ConfigureAwait(false); // no action
-					else
-						await TryFixUndelivered_RemoveConflicted().ConfigureAwait(false); // no action
-					return success;
-				}
-				else
-				{
-					var newValue = previous with { TransactionLastSequenceId = aggregateEvents.TailSequenceId };
-					var success = UndeliveredSequenceIds.TryUpdate(aggregateKey, newValue, previous);
-					if (success)
-						await TryFixUndelivered_Updated().ConfigureAwait(false); // no action
-					else
-						await TryFixUndelivered_UpdateConflicted().ConfigureAwait(false); // no action
-					return success;
-				}
-			}
-			else
-			{
-				// there is no conflict or the winner has not been decided yet.
-				return null;
 			}
 		}
 
