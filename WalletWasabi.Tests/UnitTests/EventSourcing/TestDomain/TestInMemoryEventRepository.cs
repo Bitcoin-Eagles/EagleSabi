@@ -14,10 +14,10 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 
 		protected ITestOutputHelper Output { get; init; }
 
-		public SemaphoreSlim Append_ValidatedSemaphore { get; } = new(0);
-		public SemaphoreSlim Append_MarkedUndeliveredSemaphore { get; } = new(0);
-		public SemaphoreSlim Append_ConflictedSemaphore { get; } = new(0);
-		public SemaphoreSlim Append_AppendedSemaphore { get; } = new(0);
+		public SemaphoreSlim Append_Validated_Semaphore { get; } = new(0);
+		public SemaphoreSlim Append_MarkedUndelivered_Semaphore { get; } = new(0);
+		public SemaphoreSlim Append_Conflicted_Semaphore { get; } = new(0);
+		public SemaphoreSlim Append_Appended_Semaphore { get; } = new(0);
 
 		public SemaphoreSlim MarkUndelivered_Started_Semaphore { get; } = new(0);
 		public SemaphoreSlim MarkUndelivered_Got_Semaphore { get; } = new(0);
@@ -26,16 +26,18 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public SemaphoreSlim MarkUndelivered_Ended_Semaphore { get; } = new(0);
 
 		public SemaphoreSlim MarkDelivered_Started_Semaphore { get; } = new(0);
-		public SemaphoreSlim MarkDelivered_Got_Semaphore { get; } = new(0);
+		public SemaphoreSlim MarkDelivered_GotAggregateEvents_Semaphore { get; } = new(0);
 		public SemaphoreSlim MarkDelivered_Conflicted_Semaphore { get; } = new(0);
 		public SemaphoreSlim MarkDelivered_Ended_Semaphore { get; } = new(0);
 
-		public SemaphoreSlim DoMarkDelivered_UndeliveredConflictFixedSemaphore { get; } = new(0);
+		public SemaphoreSlim DoMarkDelivered_Entered_Semaphore { get; } = new(0);
+		public SemaphoreSlim DoMarkDelivered_Got_Semaphore { get; } = new(0);
+		public SemaphoreSlim DoMarkDelivered_UndeliveredConflictFixed_Semaphore { get; } = new(0);
 
-		public Func<Task>? Append_ValidatedCallback { get; set; }
-		public Func<Task>? Append_MarkedUndeliveredCallback { get; set; }
-		public Func<Task>? Append_ConflictedCallback { get; set; }
-		public Func<Task>? Append_AppendedCallback { get; set; }
+		public Func<Task>? Append_Validated_Callback { get; set; }
+		public Func<Task>? Append_MarkedUndelivered_Callback { get; set; }
+		public Func<Task>? Append_Conflicted_Callback { get; set; }
+		public Func<Task>? Append_Appended_Callback { get; set; }
 
 		public Func<Task>? MarkUndelivered_Started_Callback { get; set; }
 		public Func<Task>? MarkUndelivered_Got_Callback { get; set; }
@@ -44,46 +46,48 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public Func<Task>? MarkUndelivered_Ended_Callback { get; set; }
 
 		public Func<Task>? MarkDelivered_Started_Callback { get; set; }
-		public Func<Task>? MarkDelivered_Got_Callback { get; set; }
+		public Func<Task>? MarkDelivered_GotAggregateEvents_Callback { get; set; }
 		public Func<Task>? MarkDelivered_Conflicted_Callback { get; set; }
 		public Func<Task>? MarkDelivered_Ended_Callback { get; set; }
 
-		public Func<Task>? DoMarkDelivered_UndeliveredConflictFixedCallback { get; set; }
+		public Func<Task>? DoMarkDelivered_Entered_Callback { get; set; }
+		public Func<Task>? DoMarkDelivered_Got_Callback { get; set; }
+		public Func<Task>? DoMarkDelivered_UndeliveredConflictFixed_Callback { get; set; }
 
 		protected override async Task Append_Validated()
 		{
 			await base.Append_Validated();
 			Output.WriteLine(nameof(Append_Validated));
-			Append_ValidatedSemaphore.Release();
-			if (Append_ValidatedCallback is not null)
-				await Append_ValidatedCallback.Invoke();
+			Append_Validated_Semaphore.Release();
+			if (Append_Validated_Callback is not null)
+				await Append_Validated_Callback.Invoke();
 		}
 
 		protected override async Task Append_MarkedUndelivered()
 		{
 			await base.Append_MarkedUndelivered();
 			Output.WriteLine(nameof(Append_MarkedUndelivered));
-			Append_MarkedUndeliveredSemaphore.Release();
-			if (Append_MarkedUndeliveredCallback is not null)
-				await Append_MarkedUndeliveredCallback.Invoke();
+			Append_MarkedUndelivered_Semaphore.Release();
+			if (Append_MarkedUndelivered_Callback is not null)
+				await Append_MarkedUndelivered_Callback.Invoke();
 		}
 
 		protected override async Task Append_Conflicted()
 		{
 			await base.Append_Conflicted();
 			Output.WriteLine(nameof(Append_Conflicted));
-			Append_ConflictedSemaphore.Release();
-			if (Append_ConflictedCallback is not null)
-				await Append_ConflictedCallback.Invoke();
+			Append_Conflicted_Semaphore.Release();
+			if (Append_Conflicted_Callback is not null)
+				await Append_Conflicted_Callback.Invoke();
 		}
 
 		protected override async Task Append_Appended()
 		{
 			await base.Append_Appended();
 			Output.WriteLine(nameof(Append_Appended));
-			Append_AppendedSemaphore.Release();
-			if (Append_AppendedCallback is not null)
-				await Append_AppendedCallback.Invoke();
+			Append_Appended_Semaphore.Release();
+			if (Append_Appended_Callback is not null)
+				await Append_Appended_Callback.Invoke();
 		}
 
 		protected override async Task MarkUndelivered_Started()
@@ -140,13 +144,13 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 				await MarkDelivered_Started_Callback.Invoke();
 		}
 
-		protected override async Task MarkDelivered_Got()
+		protected override async Task MarkDelivered_GotAggregateEvents()
 		{
-			await base.MarkDelivered_Got();
-			Output.WriteLine(nameof(MarkDelivered_Got));
-			MarkDelivered_Got_Semaphore.Release();
-			if (MarkDelivered_Got_Callback is not null)
-				await MarkDelivered_Got_Callback.Invoke();
+			await base.MarkDelivered_GotAggregateEvents();
+			Output.WriteLine(nameof(MarkDelivered_GotAggregateEvents));
+			MarkDelivered_GotAggregateEvents_Semaphore.Release();
+			if (MarkDelivered_GotAggregateEvents_Callback is not null)
+				await MarkDelivered_GotAggregateEvents_Callback.Invoke();
 		}
 
 		protected override async Task MarkDelivered_Conflicted()
@@ -167,26 +171,44 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 				await MarkDelivered_Ended_Callback.Invoke();
 		}
 
+		protected override async Task DoMarkDelivered_Entered()
+		{
+			await base.DoMarkDelivered_Entered();
+			Output.WriteLine(nameof(DoMarkDelivered_Entered));
+			DoMarkDelivered_Entered_Semaphore.Release();
+			if (DoMarkDelivered_Entered_Callback is not null)
+				await DoMarkDelivered_Entered_Callback.Invoke();
+		}
+
+		protected override async Task DoMarkDelivered_Got()
+		{
+			await base.DoMarkDelivered_Got();
+			Output.WriteLine(nameof(DoMarkDelivered_Got));
+			DoMarkDelivered_Got_Semaphore.Release();
+			if (DoMarkDelivered_Got_Callback is not null)
+				await DoMarkDelivered_Got_Callback.Invoke();
+		}
+
 		protected override async Task DoMarkDelivered_UndeliveredConflictFixed()
 		{
 			await base.DoMarkDelivered_UndeliveredConflictFixed();
 			Output.WriteLine(nameof(DoMarkDelivered_UndeliveredConflictFixed));
-			DoMarkDelivered_UndeliveredConflictFixedSemaphore.Release();
-			if (DoMarkDelivered_UndeliveredConflictFixedCallback is not null)
-				await DoMarkDelivered_UndeliveredConflictFixedCallback.Invoke();
+			DoMarkDelivered_UndeliveredConflictFixed_Semaphore.Release();
+			if (DoMarkDelivered_UndeliveredConflictFixed_Callback is not null)
+				await DoMarkDelivered_UndeliveredConflictFixed_Callback.Invoke();
 		}
 
 		public void Dispose()
 		{
-			Append_ValidatedSemaphore.Dispose();
-			Append_MarkedUndeliveredSemaphore.Dispose();
-			Append_ConflictedSemaphore.Dispose();
-			Append_AppendedSemaphore.Dispose();
+			Append_Validated_Semaphore.Dispose();
+			Append_MarkedUndelivered_Semaphore.Dispose();
+			Append_Conflicted_Semaphore.Dispose();
+			Append_Appended_Semaphore.Dispose();
 
-			Append_ValidatedCallback = null;
-			Append_MarkedUndeliveredCallback = null;
-			Append_ConflictedCallback = null;
-			Append_AppendedCallback = null;
+			Append_Validated_Callback = null;
+			Append_MarkedUndelivered_Callback = null;
+			Append_Conflicted_Callback = null;
+			Append_Appended_Callback = null;
 
 			MarkUndelivered_Started_Semaphore.Dispose();
 			MarkUndelivered_Got_Semaphore.Dispose();
@@ -201,18 +223,22 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 			MarkUndelivered_Ended_Callback = null;
 
 			MarkDelivered_Started_Semaphore.Dispose();
-			MarkDelivered_Got_Semaphore.Dispose();
+			MarkDelivered_GotAggregateEvents_Semaphore.Dispose();
 			MarkDelivered_Conflicted_Semaphore.Dispose();
 			MarkDelivered_Ended_Semaphore.Dispose();
 
 			MarkDelivered_Started_Callback = null;
-			MarkDelivered_Got_Callback = null;
+			MarkDelivered_GotAggregateEvents_Callback = null;
 			MarkDelivered_Conflicted_Callback = null;
 			MarkDelivered_Ended_Callback = null;
 
-			DoMarkDelivered_UndeliveredConflictFixedSemaphore.Dispose();
+			DoMarkDelivered_Entered_Semaphore.Dispose();
+			DoMarkDelivered_Got_Semaphore.Dispose();
+			DoMarkDelivered_UndeliveredConflictFixed_Semaphore.Dispose();
 
-			DoMarkDelivered_UndeliveredConflictFixedCallback = null;
+			DoMarkDelivered_Entered_Callback = null;
+			DoMarkDelivered_Got_Callback = null;
+			DoMarkDelivered_UndeliveredConflictFixed_Callback = null;
 		}
 	}
 }

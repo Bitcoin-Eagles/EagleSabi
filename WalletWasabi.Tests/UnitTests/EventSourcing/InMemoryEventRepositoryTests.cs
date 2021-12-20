@@ -266,7 +266,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_Appended_Semaphore.WaitAsync(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -277,9 +277,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task WaitForConflict()
 			{
-				Assert.True(await TestEventRepository.Append_ConflictedSemaphore.WaitAsync(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_Conflicted_Semaphore.WaitAsync(_semaphoreWaitTimeout));
 			}
-			TestEventRepository.Append_AppendedCallback = WaitForConflict;
+			TestEventRepository.Append_Appended_Callback = WaitForConflict;
 
 			// Assert
 			await Assert.ThrowsAsync<OptimisticConcurrencyException>(AppendInParallelAsync);
@@ -306,7 +306,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task Append2Async()
 			{
-				Assert.True(await TestEventRepository.Append_AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
+				Assert.True(await TestEventRepository.Append_Appended_Semaphore.WaitAsync(_semaphoreWaitTimeout));
 				await EventRepository.AppendEventsAsync(nameof(TestRoundAggregate), ID_1, events2!);
 			}
 			async Task AppendInParallelAsync()
@@ -317,9 +317,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			async Task WaitForNoConflict()
 			{
-				Assert.False(await TestEventRepository.Append_ConflictedSemaphore.WaitAsync(_semaphoreWaitTimeout));
+				Assert.False(await TestEventRepository.Append_Conflicted_Semaphore.WaitAsync(_semaphoreWaitTimeout));
 			}
-			TestEventRepository.Append_AppendedCallback = WaitForNoConflict;
+			TestEventRepository.Append_Appended_Callback = WaitForNoConflict;
 
 			// no conflict
 			await AppendInParallelAsync();
@@ -334,8 +334,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		}
 
 		[Theory]
-		[InlineData(nameof(TestInMemoryEventRepository.Append_ValidatedCallback))]
-		[InlineData(nameof(TestInMemoryEventRepository.Append_AppendedCallback))]
+		[InlineData(nameof(TestInMemoryEventRepository.Append_Validated_Callback))]
+		[InlineData(nameof(TestInMemoryEventRepository.Append_Appended_Callback))]
 		public async Task ListEventsAsync_ConflictWithAppending_Async(string listOnCallback)
 		{
 			// Arrange
@@ -355,12 +355,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 			switch (listOnCallback)
 			{
-				case nameof(TestInMemoryEventRepository.Append_ValidatedCallback):
-					TestEventRepository.Append_ValidatedCallback = ListCallback;
+				case nameof(TestInMemoryEventRepository.Append_Validated_Callback):
+					TestEventRepository.Append_Validated_Callback = ListCallback;
 					break;
 
-				case nameof(TestInMemoryEventRepository.Append_AppendedCallback):
-					TestEventRepository.Append_AppendedCallback = ListCallback;
+				case nameof(TestInMemoryEventRepository.Append_Appended_Callback):
+					TestEventRepository.Append_Appended_Callback = ListCallback;
 					break;
 
 				default:
@@ -372,7 +372,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var expected = events1.AsEnumerable();
 			switch (listOnCallback)
 			{
-				case nameof(TestInMemoryEventRepository.Append_AppendedCallback):
+				case nameof(TestInMemoryEventRepository.Append_Appended_Callback):
 					expected = expected.Concat(events2);
 					break;
 			}
@@ -709,9 +709,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 
 			// After first AppendEventsAsync() call marks events as undelivered but before
 			// they are actually appended to the repository
-			TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
+			TestEventRepository.Append_MarkedUndelivered_Callback = async () =>
 			{
-				TestEventRepository.Append_MarkedUndeliveredCallback = null;
+				TestEventRepository.Append_MarkedUndelivered_Callback = null;
 
 				if (beforeAppend is not null)
 					await beforeAppend.Invoke();
@@ -881,9 +881,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					{
 						TestEventRepository.MarkUndelivered_Got_Callback = null;
 
-						TestEventRepository.Append_MarkedUndeliveredCallback = () =>
+						TestEventRepository.Append_MarkedUndelivered_Callback = () =>
 						{
-							TestEventRepository.Append_MarkedUndeliveredCallback = null;
+							TestEventRepository.Append_MarkedUndelivered_Callback = null;
 
 							throw new TestException();
 						};
@@ -973,9 +973,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			Func<Task> appendAsync = PrepareAppendWithConflict(2, 1,
 				beforeAppend: () =>
 				{
-					TestEventRepository.Append_MarkedUndeliveredCallback = async () =>
+					TestEventRepository.Append_MarkedUndelivered_Callback = async () =>
 					{
-						TestEventRepository.Append_MarkedUndeliveredCallback = null;
+						TestEventRepository.Append_MarkedUndelivered_Callback = null;
 
 						await beforeAppend!.Invoke();
 					};
@@ -1069,9 +1069,61 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			}
 		}
 
+		[Theory]
+		[InlineData(1, 1, 1)]
+		[InlineData(2, 1, 1)]
+		[InlineData(2, 1, 2)]
+		[InlineData(2, 2, 1)]
+		[InlineData(2, 2, 2)]
+		[InlineData(3, 1, 2)]
+		[InlineData(3, 2, 1)]
+		public async Task MarkEventsAsDeliveredCumulativeAsync_AppendConflict_UndeliveredConflict_Async(
+			int appendedEvents,
+			int deliveredSequenceId1,
+			int deliveredSequenceId2)
+		{
+			// Arrange
+			Func<Task>? afterAppend = null;
+			Func<Task> appendAsync = PrepareAppendWithConflict(appendedEvents + 1, appendedEvents,
+				afterAppend: async () => await afterAppend!.Invoke());
+
+			// Act
+			async Task ActAsync()
+			{
+				await appendAsync.Invoke();
+			}
+			afterAppend = async () =>
+			{
+				TestEventRepository.DoMarkDelivered_Got_Callback = async () =>
+				{
+					TestEventRepository.DoMarkDelivered_Got_Callback = null;
+
+					await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), ID_1, deliveredSequenceId2);
+				};
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), ID_1, deliveredSequenceId1);
+			};
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(ActAsync);
+			await Assert_MarkDeliveredSemaphore_Async(
+				conflicted: 1);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(appendedEvents);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			if (appendedEvents <= Math.Max(deliveredSequenceId1, deliveredSequenceId2))
+			{
+				undeliveredEvents.Count.ShouldBe(0);
+			}
+			else
+			{
+				undeliveredEvents.Count.ShouldBe(1);
+				undeliveredEvents[0].WrappedEvents.Count.ShouldBe(appendedEvents - Math.Max(deliveredSequenceId1, deliveredSequenceId2));
+			}
+		}
+
 		private async Task Assert_MarkDeliveredSemaphore_Async(
 			int? started = null,
-			int? got = null,
+			int? gotAggregateEvents = null,
 			int? conflicted = null,
 			int? ended = null)
 		{
@@ -1082,12 +1134,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					started.Value,
 					nameof(TestEventRepository.MarkDelivered_Started_Semaphore));
 			}
-			if (got.HasValue)
+			if (gotAggregateEvents.HasValue)
 			{
 				await AssertSemaphoreAsync(
-					TestEventRepository.MarkDelivered_Got_Semaphore,
-					got.Value,
-					nameof(TestEventRepository.MarkDelivered_Got_Semaphore));
+					TestEventRepository.MarkDelivered_GotAggregateEvents_Semaphore,
+					gotAggregateEvents.Value,
+					nameof(TestEventRepository.MarkDelivered_GotAggregateEvents_Semaphore));
 			}
 			if (conflicted.HasValue)
 			{
