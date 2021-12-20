@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.EventSourcing.Records;
+using WalletWasabi.Exceptions;
 using WalletWasabi.Helpers;
 
 namespace WalletWasabi.EventSourcing
@@ -103,7 +104,7 @@ namespace WalletWasabi.EventSourcing
 					$"Conflict while committing events. Retry command. aggregate: '{aggregateType}' id: '{aggregateId}'");
 			}
 			if (conflict)
-				throw new ApplicationException($"Unexpected code reached in '{nameof(AppendEventsAsync)}'. (conflict: '{conflict}')");
+				throw new AssertionFailedException($"Unexpected code reached in '{nameof(AppendEventsAsync)}'. (conflict: '{conflict}')");
 
 			await Append_Appended().ConfigureAwait(false); // no action
 
@@ -164,7 +165,7 @@ namespace WalletWasabi.EventSourcing
 			do
 			{
 				if (liveLockLimit-- <= 0)
-					throw new ApplicationException("Live lock detected.");
+					throw new AssertionFailedException("Live lock detected.");
 				if (conflict)
 					await MarkDelivered_Conflicted().ConfigureAwait(false); // no action
 				else
@@ -250,11 +251,11 @@ namespace WalletWasabi.EventSourcing
 			do
 			{
 				if (liveLockLimit-- <= 0)
-					throw new ApplicationException("Live lock detected.");
+					throw new AssertionFailedException("Live lock detected.");
 				(tailIndex, aggregateIds) = AggregatesIds.GetOrAdd(aggregateType, _ => new(0, ImmutableSortedSet<string>.Empty));
 				newAggregateIds = aggregateIds.Add(aggregateId);
 				if (newAggregateIds.Count == aggregateIds.Count)
-					throw new ApplicationException($"Aggregate id duplicate detected in '{nameof(InMemoryEventRepository)}.{nameof(IndexNewAggregateId)}'");
+					throw new AssertionFailedException($"Aggregate id duplicate detected in '{nameof(InMemoryEventRepository)}.{nameof(IndexNewAggregateId)}'");
 			}
 			while (!AggregatesIds.TryUpdate(
 				key: aggregateType,
@@ -284,7 +285,7 @@ namespace WalletWasabi.EventSourcing
 			do
 			{
 				if (liveLockLimit-- <= 0)
-					throw new ApplicationException("Live lock detected.");
+					throw new AssertionFailedException("Live lock detected.");
 				if (conflict)
 					await MarkUndelivered_Conflicted().ConfigureAwait(false); // no action
 				else
@@ -341,7 +342,7 @@ namespace WalletWasabi.EventSourcing
 				await DoMarkDelivered_Got().ConfigureAwait(false); // no action
 
 				if (previous.TransactionLastSequenceId < aggregateEvents.TailSequenceId)
-					throw new ApplicationException($"'{nameof(UndeliveredSequenceIds)}' is inconsistnet with '{nameof(AggregatesEvents)}'. '{nameof(AggregateSequenceIds.TransactionLastSequenceId)}' is smaller than '{nameof(AggregateEvents.TailSequenceId)}'. (aggregateKey: '{aggregateKey}')");
+					throw new AssertionFailedException($"'{nameof(UndeliveredSequenceIds)}' is inconsistnet with '{nameof(AggregatesEvents)}'. '{nameof(AggregateSequenceIds.TransactionLastSequenceId)}' is smaller than '{nameof(AggregateEvents.TailSequenceId)}'. (aggregateKey: '{aggregateKey}')");
 
 				var transactionLastSequenceId = previous.TransactionLastSequenceId;
 
@@ -379,7 +380,7 @@ namespace WalletWasabi.EventSourcing
 				else
 				{
 					// At this point one of the previous exceptions should have been thrown.
-					throw new ApplicationException($"Unexpected code reached in '{nameof(TryDoMarkEventsAsDeliveredComulativeAsync)}'.");
+					throw new AssertionFailedException($"Unexpected code reached in '{nameof(TryDoMarkEventsAsDeliveredComulativeAsync)}'.");
 				}
 			}
 			else
