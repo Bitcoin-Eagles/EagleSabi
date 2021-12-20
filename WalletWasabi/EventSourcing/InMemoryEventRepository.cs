@@ -180,7 +180,7 @@ namespace WalletWasabi.EventSourcing
 						nameof(deliveredSequenceId));
 				}
 
-				await MarkDelivered_Got().ConfigureAwait(false); // no action
+				await MarkDelivered_GotAggregateEvents().ConfigureAwait(false); // no action
 
 				conflict = !await TryDoMarkEventsAsDeliveredComulativeAsync(aggregateKey, aggregateEvents, deliveredSequenceId)
 					.ConfigureAwait(false);
@@ -435,7 +435,7 @@ namespace WalletWasabi.EventSourcing
 		}
 
 		// Hook for parallel critical section testing.
-		protected virtual Task MarkDelivered_Got()
+		protected virtual Task MarkDelivered_GotAggregateEvents()
 		{
 			// Keep empty. To be overriden in tests.
 			return Task.CompletedTask;
