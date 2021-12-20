@@ -481,7 +481,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		[InlineData(2, 2)]
 		[InlineData(2, 3)]
 		[InlineData(2, -1)]
-		public async Task MarkEventsAsDeliveredCumulative_SingleThread_Async(int eventCount, int deliveredSequenceId)
+		public async Task MarkEventsAsDeliveredCumulativeAsync_SingleThread_Async(int eventCount, int deliveredSequenceId)
 		{
 			Guard.InRangeAndNotNull(nameof(eventCount), eventCount, 0, 3);
 
@@ -528,7 +528,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				}
 				else
 				{
-					throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulative_SingleThread_Async)}'");
+					throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulativeAsync_SingleThread_Async)}'");
 				}
 			}
 		}
@@ -608,7 +608,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		[InlineData(2, 2, 3, 2)]
 		[InlineData(2, 2, 3, 3)]
 		[InlineData(2, 2, -1, 1)]
-		public async Task MarkEventsAsDeliveredCumulative_SingleThreadTwoAggregates_Async(
+		public async Task MarkEventsAsDeliveredCumulativeAsync_SingleThreadTwoAggregates_Async(
 			int aEventsCount,
 			int bEventsCount,
 			int aDeliveredSequenceIds,
@@ -675,7 +675,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 					}
 					else
 					{
-						throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulative_SingleThreadTwoAggregates_Async)}'");
+						throw new ApplicationException($"Unexpected code reached in '{nameof(MarkEventsAsDeliveredCumulativeAsync_SingleThreadTwoAggregates_Async)}'");
 					}
 				}
 			}
@@ -1005,6 +1005,104 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var undeliveredEvents2 = await EventRepository.ListUndeliveredEventsAsync();
 			undeliveredEvents2.Count.ShouldBe(1);
 			undeliveredEvents2[0].WrappedEvents.Count.ShouldBe(1);
+		}
+
+		[Theory]
+		[InlineData(0)]
+		[InlineData(1)]
+		[InlineData(2)]
+		public async Task MarkEventsAsDeliveredCumulativeAsync_NonExistentAggregateId_Async(int deliveredSequenceId)
+		{
+			// Arrange
+
+			// Act
+			async Task ActAsync()
+			{
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), ID_2, deliveredSequenceId);
+			}
+
+			// Assert
+			if (0 < deliveredSequenceId)
+				await Assert.ThrowsAsync<ArgumentException>(ActAsync);
+			else
+				await ActAsync();
+		}
+
+		[Theory]
+		[InlineData(1, 1)]
+		[InlineData(2, 1)]
+		[InlineData(2, 2)]
+		public async Task MarkEventsAsDeliveredCumulativeAsync_AppendConflict_UndeliveredNoConflict_Async(
+			int appendedEvents,
+			int deliveredSequenceId)
+		{
+			// Arrange
+			Func<Task>? afterAppend = null;
+			Func<Task> appendAsync = PrepareAppendWithConflict(appendedEvents + 1, appendedEvents,
+				afterAppend: async () => await afterAppend!.Invoke());
+
+			// Act
+			async Task ActAsync()
+			{
+				await appendAsync.Invoke();
+			}
+			afterAppend = async () =>
+				await EventRepository.MarkEventsAsDeliveredCumulativeAsync(nameof(TestRoundAggregate), ID_1, deliveredSequenceId);
+
+			// Assert
+			await Assert.ThrowsAsync<OptimisticConcurrencyException>(ActAsync);
+			await Assert_MarkDeliveredSemaphore_Async(
+				started: 1,
+				conflicted: 0,
+				ended: 1);
+			var events = await EventRepository.ListEventsAsync(nameof(TestRoundAggregate), ID_1);
+			events.Count.ShouldBe(appendedEvents);
+			var undeliveredEvents = await EventRepository.ListUndeliveredEventsAsync();
+			if (appendedEvents <= deliveredSequenceId)
+			{
+				undeliveredEvents.Count.ShouldBe(0);
+			}
+			else
+			{
+				undeliveredEvents.Count.ShouldBe(1);
+				undeliveredEvents[0].WrappedEvents.Count.ShouldBe(appendedEvents - deliveredSequenceId);
+			}
+		}
+
+		private async Task Assert_MarkDeliveredSemaphore_Async(
+			int? started = null,
+			int? got = null,
+			int? conflicted = null,
+			int? ended = null)
+		{
+			if (started.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkDelivered_Started_Semaphore,
+					started.Value,
+					nameof(TestEventRepository.MarkDelivered_Started_Semaphore));
+			}
+			if (got.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkDelivered_Got_Semaphore,
+					got.Value,
+					nameof(TestEventRepository.MarkDelivered_Got_Semaphore));
+			}
+			if (conflicted.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkDelivered_Conflicted_Semaphore,
+					conflicted.Value,
+					nameof(TestEventRepository.MarkDelivered_Conflicted_Semaphore));
+			}
+			if (ended.HasValue)
+			{
+				await AssertSemaphoreAsync(
+					TestEventRepository.MarkDelivered_Ended_Semaphore,
+					ended.Value,
+					nameof(TestEventRepository.MarkDelivered_Ended_Semaphore));
+			}
 		}
 
 		public void Dispose()

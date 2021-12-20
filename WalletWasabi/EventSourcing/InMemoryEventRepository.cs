@@ -511,48 +511,6 @@ namespace WalletWasabi.EventSourcing
 			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_Entered()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_Detected()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_Removed()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_RemoveConflicted()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_Updated()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
-		// Hook for parallel critical section testing.
-		protected virtual Task TryFixUndelivered_UpdateConflicted()
-		{
-			// Keep empty. To be overriden in tests.
-			return Task.CompletedTask;
-		}
-
 		#endregion Hooks
 	}
 }
