@@ -15,19 +15,25 @@ namespace WalletWasabi.EventSourcing
 	{
 		public const int OptimisticRetryLimit = 10;
 
-		private IEventRepository EventRepository { get; }
+		#region Dependencies
 
+		private IEventRepository EventRepository { get; init; }
 		private IAggregateFactory AggregateFactory { get; init; }
 		private ICommandProcessorFactory CommandProcessorFactory { get; init; }
+		private IEventPusher EventPusher { get; init; }
+
+		#endregion Dependencies
 
 		public EventStore(
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
-			ICommandProcessorFactory commandProcessorFactory)
+			ICommandProcessorFactory commandProcessorFactory,
+			IEventPusher eventPusher)
 		{
 			EventRepository = eventRepository;
 			AggregateFactory = aggregateFactory;
 			CommandProcessorFactory = commandProcessorFactory;
+			EventPusher = eventPusher;
 		}
 
 		/// <inheritdoc />
@@ -104,8 +110,7 @@ namespace WalletWasabi.EventSourcing
 
 					Appended(); // No action
 
-#warning TODO:
-					// TODO: Push for new event publishing
+					await EventPusher.PushAsync().ConfigureAwait(false);
 
 					Pushed(); // No action
 
