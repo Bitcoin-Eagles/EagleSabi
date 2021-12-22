@@ -15,7 +15,7 @@ namespace WalletWasabi.EventSourcing
 		{ get; init; } = new();
 
 		/// <inheritdoc/>
-		public async Task Publish<TMessage>(TMessage message)
+		public async Task PublishAsync<TMessage>(TMessage message)
 		{
 			Guard.NotNull(nameof(message), message);
 
@@ -27,7 +27,7 @@ namespace WalletWasabi.EventSourcing
 		}
 
 		/// <inheritdoc/>
-		public Task Subscribe<TMessage>(ISubscriber<TMessage> subscriber)
+		public Task SubscribeAsync<TMessage>(ISubscriber<TMessage> subscriber)
 		{
 			var messageTypeSubscribers = Subscribers.GetOrAdd(typeof(TMessage), new ConcurrentBag<Func<object, Task>>());
 			messageTypeSubscribers.Add(
