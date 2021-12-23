@@ -33,9 +33,7 @@ namespace WalletWasabi.EventSourcing
 							{
 								await aggregateEvents.WrappedEvents.ForEachAggregateExceptionsAsync(
 									async (@event) =>
-#warning TODO:
-										// TODO: publish as correct type e.g. by dynamic
-										await PubSub.PublishAsync(@event).ConfigureAwait(false)
+										await PubSub.PublishDynamicAsync(@event).ConfigureAwait(false)
 								).ConfigureAwait(false);
 							}
 							catch

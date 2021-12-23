@@ -24,7 +24,8 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			TestEventStore = new TestEventStore(
 				EventRepository,
 				new TestDomainAggregateFactory(),
-				new TestDomainCommandProcessorFactory());
+				new TestDomainCommandProcessorFactory(),
+				null);
 			EventStore = TestEventStore;
 		}
 
