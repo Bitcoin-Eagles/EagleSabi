@@ -68,6 +68,16 @@ namespace WalletWasabi.Helpers
 		/// Then throws AggregateException containing all exceptions if any.
 		/// Unpacks one level of AggregateException thrown from an action.
 		/// </summary>
+		public static async Task AggregateExceptionsAsync(params Func<Task>[] tasks)
+		{
+			await AggregateExceptionsAsync(tasks.AsEnumerable()).ConfigureAwait(false);
+		}
+
+		/// <summary>
+		/// Executes all actions regardless if one throws an exception.
+		/// Then throws AggregateException containing all exceptions if any.
+		/// Unpacks one level of AggregateException thrown from an action.
+		/// </summary>
 		public static async Task AggregateExceptionsAsync(IEnumerable<Func<Task>> tasks, string? message = null)
 		{
 			var exceptions = new List<Exception>();

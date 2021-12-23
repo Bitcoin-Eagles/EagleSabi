@@ -4,7 +4,7 @@ using WalletWasabi.EventSourcing;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.EventSourcing.Records;
 using WalletWasabi.Tests.Helpers;
-using WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain.Messages;
+using WalletWasabi.Tests.UnitTests.EventSourcing.Dummy.Messages;
 using Xunit;
 
 namespace WalletWasabi.Tests.UnitTests.EventSourcing
