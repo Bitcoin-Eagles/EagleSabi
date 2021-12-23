@@ -19,7 +19,7 @@ namespace WalletWasabi.EventSourcing
 		private IEventRepository EventRepository { get; init; }
 		private IAggregateFactory AggregateFactory { get; init; }
 		private ICommandProcessorFactory CommandProcessorFactory { get; init; }
-		private IEventPusher? EventPusher { get; init; }
+		private IEventPubSub? EventPusher { get; init; }
 
 		#endregion Dependencies
 
@@ -27,7 +27,7 @@ namespace WalletWasabi.EventSourcing
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
 			ICommandProcessorFactory commandProcessorFactory,
-			IEventPusher? eventPusher)
+			IEventPubSub? eventPusher)
 		{
 			EventRepository = eventRepository;
 			AggregateFactory = aggregateFactory;
@@ -98,7 +98,8 @@ namespace WalletWasabi.EventSourcing
 					foreach (var newEvent in result.Events)
 					{
 						sequenceId++;
-						wrappedEvents.Add(new WrappedEvent(sequenceId, newEvent, command.IdempotenceId));
+						wrappedEvents.Add(WrappedEvent.CreateDynamic(
+							aggregateType, aggregateId, sequenceId, newEvent, command.IdempotenceId));
 						aggregate.Apply(newEvent);
 					}
 
@@ -110,7 +111,7 @@ namespace WalletWasabi.EventSourcing
 					await Appended().ConfigureAwait(false); // No action
 
 					if (EventPusher is not null)
-						await EventPusher.PushAsync().ConfigureAwait(false);
+						await EventPusher.PublishAllAsync().ConfigureAwait(false);
 
 					await Pushed().ConfigureAwait(false); // No action
 
