@@ -20,7 +20,7 @@ namespace WalletWasabi.EventSourcing
 		private IEventRepository EventRepository { get; init; }
 		private IAggregateFactory AggregateFactory { get; init; }
 		private ICommandProcessorFactory CommandProcessorFactory { get; init; }
-		private IEventPusher EventPusher { get; init; }
+		private IEventPusher? EventPusher { get; init; }
 
 		#endregion Dependencies
 
@@ -28,7 +28,7 @@ namespace WalletWasabi.EventSourcing
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
 			ICommandProcessorFactory commandProcessorFactory,
-			IEventPusher eventPusher)
+			IEventPusher? eventPusher)
 		{
 			EventRepository = eventRepository;
 			AggregateFactory = aggregateFactory;
@@ -110,7 +110,8 @@ namespace WalletWasabi.EventSourcing
 
 					Appended(); // No action
 
-					await EventPusher.PushAsync().ConfigureAwait(false);
+					if (EventPusher is not null)
+						await EventPusher.PushAsync().ConfigureAwait(false);
 
 					Pushed(); // No action
 
