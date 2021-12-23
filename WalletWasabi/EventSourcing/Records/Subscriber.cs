@@ -9,6 +9,11 @@ namespace WalletWasabi.EventSourcing.Records
 		{
 			await SubscriberCallback.Invoke(message).ConfigureAwait(false);
 		}
+
+		public Subscriber(Action<TMessage> subscriberCallback)
+			: this(a => { subscriberCallback(a); return Task.CompletedTask; })
+		{
+		}
 	}
 
 	public record Subscriber()
@@ -20,7 +25,7 @@ namespace WalletWasabi.EventSourcing.Records
 
 		public static Subscriber<TMessage> Create<TMessage>(Action<TMessage> subscriberCallback)
 		{
-			return new Subscriber<TMessage>(a => { subscriberCallback.Invoke(a); return Task.CompletedTask; });
+			return new Subscriber<TMessage>(subscriberCallback);
 		}
 	}
 }

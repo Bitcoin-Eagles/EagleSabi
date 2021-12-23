@@ -1,10 +1,11 @@
 using System.Linq;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Interfaces;
+using WalletWasabi.EventSourcing.Records;
 
 namespace WalletWasabi.EventSourcing
 {
-	public class EventPusher : IEventPusher
+	public class EventPubSub : IEventPubSub
 	{
 		#region Dependencies
 
@@ -13,13 +14,14 @@ namespace WalletWasabi.EventSourcing
 
 		#endregion Dependencies
 
-		public EventPusher(IEventRepository eventRepository, IPubSub pubSub)
+		public EventPubSub(IEventRepository eventRepository, IPubSub pubSub)
 		{
 			EventRepository = eventRepository;
 			PubSub = pubSub;
 		}
 
-		public async Task PushAsync()
+		/// <inheritdoc/>
+		public async Task PublishAllAsync()
 		{
 			try
 			{
@@ -32,8 +34,7 @@ namespace WalletWasabi.EventSourcing
 							try
 							{
 								await aggregateEvents.WrappedEvents.ForEachAggregateExceptionsAsync(
-									async (@event) =>
-										await PubSub.PublishDynamicAsync(@event).ConfigureAwait(false)
+									PubSub.PublishDynamicAsync
 								).ConfigureAwait(false);
 							}
 							catch
@@ -59,6 +60,12 @@ namespace WalletWasabi.EventSourcing
 				// consistent so the caller doesn't really care if it fails.
 				throw;
 			}
+		}
+
+		/// <inheritdoc/>
+		public async Task SubscribeAsync<TEvent>(ISubscriber<WrappedEvent<TEvent>> subscriber) where TEvent : IEvent
+		{
+			await PubSub.SubscribeAsync(subscriber).ConfigureAwait(false);
 		}
 	}
 }

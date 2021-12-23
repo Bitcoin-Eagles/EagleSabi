@@ -11,7 +11,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
 			ICommandProcessorFactory commandProcessorFactory,
-			IEventPusher? eventPusher)
+			IEventPubSub? eventPusher)
 			: base(eventRepository, aggregateFactory, commandProcessorFactory, eventPusher)
 		{
 		}
