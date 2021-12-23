@@ -9,8 +9,9 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing.TestDomain
 		public TestEventStore(
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
-			ICommandProcessorFactory commandProcessorFactory)
-			: base(eventRepository, aggregateFactory, commandProcessorFactory)
+			ICommandProcessorFactory commandProcessorFactory,
+			IEventPusher? eventPusher)
+			: base(eventRepository, aggregateFactory, commandProcessorFactory, eventPusher)
 		{
 		}
 
