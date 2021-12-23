@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Exceptions;
@@ -52,7 +51,7 @@ namespace WalletWasabi.EventSourcing
 				}
 				catch (OptimisticConcurrencyException)
 				{
-					Conflicted(); // No action
+					await Conflicted().ConfigureAwait(false); // No action
 					if (tries <= 0)
 						throw;
 					optimisticConflict = true;
@@ -103,17 +102,17 @@ namespace WalletWasabi.EventSourcing
 						aggregate.Apply(newEvent);
 					}
 
-					Prepared(); // No ation
+					await Prepared().ConfigureAwait(false); // No ation
 
 					await EventRepository.AppendEventsAsync(aggregateType, aggregateId, wrappedEvents)
 						.ConfigureAwait(false);
 
-					Appended(); // No action
+					await Appended().ConfigureAwait(false); // No action
 
 					if (EventPusher is not null)
 						await EventPusher.PushAsync().ConfigureAwait(false);
 
-					Pushed(); // No action
+					await Pushed().ConfigureAwait(false); // No action
 
 					return new WrappedResult(sequenceId, wrappedEvents.AsReadOnly(), aggregate.State);
 				}
@@ -167,32 +166,33 @@ namespace WalletWasabi.EventSourcing
 			return events;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Prepared()
+		// Hook for parallel critical section testing.
+		protected virtual Task Prepared()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Conflicted()
+		// Hook for parallel critical section testing.
+		protected virtual Task Conflicted()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Appended()
+		// Hook for parallel critical section testing.
+
+		protected virtual Task Appended()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 
-		// Hook for parallel critical section testing in DEBUG build only.
-		[Conditional("DEBUG")]
-		protected virtual void Pushed()
+		// Hook for parallel critical section testing.
+		protected virtual Task Pushed()
 		{
 			// Keep empty. To be overriden in tests.
+			return Task.CompletedTask;
 		}
 	}
 }

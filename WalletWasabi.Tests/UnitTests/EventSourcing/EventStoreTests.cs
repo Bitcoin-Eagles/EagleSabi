@@ -10,7 +10,7 @@ using Xunit;
 
 namespace WalletWasabi.Tests.UnitTests.EventSourcing
 {
-	public class TestRoundTests : IDisposable
+	public class EventStoreTests : IDisposable
 	{
 		private readonly TimeSpan _semaphoreWaitTimeout = TimeSpan.FromSeconds(5);
 
@@ -18,7 +18,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		protected TestEventStore TestEventStore { get; init; }
 		protected IEventStore EventStore { get; init; }
 
-		public TestRoundTests()
+		public EventStoreTests()
 		{
 			EventRepository = new InMemoryEventRepository();
 			TestEventStore = new TestEventStore(
@@ -84,18 +84,16 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			Assert.True(exception.Errors.Count > 0);
 		}
 
-#if DEBUG
-
 		[Fact]
 		public async Task RegisterInput_IdempotentRedelivery_Async()
 		{
 			// Arrange
 			await EventStore.ProcessCommandAsync(new StartRound(1000, Guid.NewGuid()), nameof(TestRoundAggregate), "1");
-			Assert.True(TestEventStore.PreparedSemaphore.Wait(0));
-			Assert.True(TestEventStore.AppendedSemaphore.Wait(0));
+			Assert.True(await TestEventStore.PreparedSemaphore.WaitAsync(0));
+			Assert.True(await TestEventStore.AppendedSemaphore.WaitAsync(0));
 			var command = new RegisterInput("1", 1_000_000, Guid.NewGuid());
 			using var semaphore = new SemaphoreSlim(0);
-			TestEventStore.PreparedCallback = () =>
+			TestEventStore.PreparedCallback = async () =>
 			{
 				// Disable this callback for the second thread
 				TestEventStore.PreparedCallback = null;
@@ -104,7 +102,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				semaphore.Release();
 
 				// Wait until the other thread successfully appends its conflicting events
-				Assert.True(TestEventStore.AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(await TestEventStore.AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 			};
 
 			// Act
@@ -112,7 +110,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var task1 = Task.Run(async () => result1 = await EventStore.ProcessCommandAsync(command, nameof(TestRoundAggregate), "1"));
 
 			// Wait until we are in the PreparedCallback
-			Assert.True(semaphore.Wait(_semaphoreWaitTimeout));
+			Assert.True(await semaphore.WaitAsync(_semaphoreWaitTimeout));
 
 			var result2 = await EventStore.ProcessCommandAsync(command, nameof(TestRoundAggregate), "1");
 			await task1;
@@ -137,12 +135,12 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 		{
 			// Arrange
 			await EventStore.ProcessCommandAsync(new StartRound(1000, Guid.NewGuid()), nameof(TestRoundAggregate), "1");
-			Assert.True(TestEventStore.PreparedSemaphore.Wait(0));
-			Assert.True(TestEventStore.AppendedSemaphore.Wait(0));
+			Assert.True(await TestEventStore.PreparedSemaphore.WaitAsync(0));
+			Assert.True(await TestEventStore.AppendedSemaphore.WaitAsync(0));
 			var command1 = new RegisterInput("1", 1_000_000, Guid.NewGuid());
 			var command2 = new RegisterInput("2", 1_000_000, Guid.NewGuid());
 			using var semaphore = new SemaphoreSlim(0);
-			TestEventStore.PreparedCallback = () =>
+			TestEventStore.PreparedCallback = async () =>
 			{
 				// Disable this callback for the second thread
 				TestEventStore.PreparedCallback = null;
@@ -151,7 +149,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 				semaphore.Release();
 
 				// Wait until the other thread successfully appends its conflicting events
-				Assert.True(TestEventStore.AppendedSemaphore.Wait(_semaphoreWaitTimeout));
+				Assert.True(await TestEventStore.AppendedSemaphore.WaitAsync(_semaphoreWaitTimeout));
 			};
 
 			// Act
@@ -159,7 +157,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			var task1 = Task.Run(async () => result1 = await EventStore.ProcessCommandAsync(command1, nameof(TestRoundAggregate), "1"));
 
 			// Wait until we are in the PreparedCallback
-			Assert.True(semaphore.Wait(_semaphoreWaitTimeout));
+			Assert.True(await semaphore.WaitAsync(_semaphoreWaitTimeout));
 
 			var result2 = await EventStore.ProcessCommandAsync(command2, nameof(TestRoundAggregate), "1");
 			await task1;
@@ -167,7 +165,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			// Assert
 
 			// Conflict has happened
-			Assert.True(TestEventStore.ConflictedSemaphore.Wait(0));
+			Assert.True(await TestEventStore.ConflictedSemaphore.WaitAsync(0));
 
 			// result1 is conflicted and retried after result2
 			Assert.False(result1?.IdempotenceIdDuplicate);
@@ -185,8 +183,6 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 			Assert.IsType<TestRoundState>(result2?.State);
 			Assert.Equal(1, (result2?.State as TestRoundState)?.Inputs.Count);
 		}
-
-#endif
 
 		public void Dispose()
 		{
