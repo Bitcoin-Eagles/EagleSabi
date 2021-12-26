@@ -2,8 +2,8 @@ using System.Collections.Immutable;
 using WalletWasabi.Domains.Arena.Aggregates;
 using WalletWasabi.Domains.Arena.Command;
 using WalletWasabi.Domains.Arena.Events;
-using WalletWasabi.EventSourcing;
 using WalletWasabi.EventSourcing.Interfaces;
+using WalletWasabi.EventSourcing.Records;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 
 namespace WalletWasabi.Domains.Arena.CommandProcessor
