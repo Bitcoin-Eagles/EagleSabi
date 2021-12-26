@@ -19,7 +19,7 @@ namespace WalletWasabi.EventSourcing
 		private IEventRepository EventRepository { get; init; }
 		private IAggregateFactory AggregateFactory { get; init; }
 		private ICommandProcessorFactory CommandProcessorFactory { get; init; }
-		private IEventPubSub? EventPusher { get; init; }
+		private IEventPubSub? EventPubSub { get; init; }
 
 		#endregion Dependencies
 
@@ -27,12 +27,12 @@ namespace WalletWasabi.EventSourcing
 			IEventRepository eventRepository,
 			IAggregateFactory aggregateFactory,
 			ICommandProcessorFactory commandProcessorFactory,
-			IEventPubSub? eventPusher)
+			IEventPubSub? eventPubSub)
 		{
 			EventRepository = eventRepository;
 			AggregateFactory = aggregateFactory;
 			CommandProcessorFactory = commandProcessorFactory;
-			EventPusher = eventPusher;
+			EventPubSub = eventPubSub;
 		}
 
 		/// <inheritdoc />
@@ -89,12 +89,13 @@ namespace WalletWasabi.EventSourcing
 				throw new AssertionFailedException($"CommandProcessor is missing for aggregate type '{aggregateType}'.");
 
 			Result? result = null;
+			List<WrappedEvent>? wrappedEvents = null;
 			try
 			{
 				result = processor.Process(command, aggregate.State);
 				if (result.Success)
 				{
-					List<WrappedEvent> wrappedEvents = new();
+					wrappedEvents = new();
 					foreach (var newEvent in result.Events)
 					{
 						sequenceId++;
@@ -109,13 +110,6 @@ namespace WalletWasabi.EventSourcing
 						.ConfigureAwait(false);
 
 					await Appended().ConfigureAwait(false); // No action
-
-					if (EventPusher is not null)
-						await EventPusher.PublishAllAsync().ConfigureAwait(false);
-
-					await Pushed().ConfigureAwait(false); // No action
-
-					return new WrappedResult(sequenceId, wrappedEvents.AsReadOnly(), aggregate.State);
 				}
 			}
 			catch (OptimisticConcurrencyException)
@@ -134,7 +128,17 @@ namespace WalletWasabi.EventSourcing
 					null,
 					ex);
 			}
-			if (result?.Success == false)
+			if (result?.Success == true)
+			{
+				if (EventPubSub is not null)
+					// TODO: swallow exception and/or publish asynchronously
+					await EventPubSub.PublishAllAsync().ConfigureAwait(false);
+
+				await Published().ConfigureAwait(false); // No action
+
+				return new WrappedResult(sequenceId, wrappedEvents!.AsReadOnly(), aggregate.State);
+			}
+			else if (result?.Success == false)
 			{
 				throw new CommandFailedException(
 					aggregateType,
@@ -190,7 +194,7 @@ namespace WalletWasabi.EventSourcing
 		}
 
 		// Hook for parallel critical section testing.
-		protected virtual Task Pushed()
+		protected virtual Task Published()
 		{
 			// Keep empty. To be overriden in tests.
 			return Task.CompletedTask;
