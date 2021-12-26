@@ -19,7 +19,7 @@ namespace WalletWasabi.Tests.UnitTests.EventSourcing
 	{
 		private const string ID_1 = "ID_1";
 		private const string ID_2 = "ID_2";
-		private readonly TimeSpan _semaphoreWaitTimeout = TimeSpan.FromSeconds(5);
+		private readonly TimeSpan _semaphoreWaitTimeout = TimeSpan.FromSeconds(20);
 
 		public InMemoryEventRepositoryTests(ITestOutputHelper output)
 		{
