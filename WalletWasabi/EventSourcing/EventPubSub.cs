@@ -1,7 +1,9 @@
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using WalletWasabi.EventSourcing.Interfaces;
 using WalletWasabi.EventSourcing.Records;
+using WalletWasabi.Interfaces;
 
 namespace WalletWasabi.EventSourcing
 {
@@ -11,17 +13,19 @@ namespace WalletWasabi.EventSourcing
 
 		protected IEventRepository EventRepository { get; init; }
 		protected IPubSub PubSub { get; init; }
+		protected IBackgroundTaskQueue BackgroundTaskQueue { get; init; }
 
 		#endregion Dependencies
 
-		public EventPubSub(IEventRepository eventRepository, IPubSub pubSub)
+		public EventPubSub(IEventRepository eventRepository, IPubSub pubSub, IBackgroundTaskQueue backgroundTaskQueue)
 		{
 			EventRepository = eventRepository;
 			PubSub = pubSub;
+			BackgroundTaskQueue = backgroundTaskQueue;
 		}
 
 		/// <inheritdoc/>
-		public async Task PublishAllAsync()
+		public async Task PublishAllAsync(CancellationToken cancellationToken)
 		{
 			try
 			{
@@ -34,8 +38,13 @@ namespace WalletWasabi.EventSourcing
 							try
 							{
 								await aggregateEvents.WrappedEvents.ForEachAggregateExceptionsAsync(
-									PubSub.PublishDynamicAsync
-								).ConfigureAwait(false);
+									PubSub.PublishDynamicAsync,
+									cancellationToken: cancellationToken)
+								.ConfigureAwait(false);
+							}
+							catch (TaskCanceledException)
+							{
+								throw;
 							}
 							catch
 							{
@@ -52,7 +61,11 @@ namespace WalletWasabi.EventSourcing
 								aggregateEvents.WrappedEvents[^1].SequenceId)
 								.ConfigureAwait(false);
 						}
-					}).ConfigureAwait(false);
+					}, cancellationToken: cancellationToken).ConfigureAwait(false);
+			}
+			catch (TaskCanceledException)
+			{
+				throw;
 			}
 			catch
 			{
@@ -66,6 +79,12 @@ namespace WalletWasabi.EventSourcing
 		public async Task SubscribeAsync<TEvent>(ISubscriber<WrappedEvent<TEvent>> subscriber) where TEvent : IEvent
 		{
 			await PubSub.SubscribeAsync(subscriber).ConfigureAwait(false);
+		}
+
+		/// <inheritdoc/>
+		public async Task EnqueuePublishAllAsync()
+		{
+			await BackgroundTaskQueue.QueueBackgroundWorkItemAsync(async c => await PublishAllAsync(c).ConfigureAwait(false)).ConfigureAwait(false);
 		}
 	}
 }

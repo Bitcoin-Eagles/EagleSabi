@@ -17,6 +17,7 @@ using WalletWasabi.Backend.Middlewares;
 using WalletWasabi.Helpers;
 using WalletWasabi.Interfaces;
 using WalletWasabi.Logging;
+using WalletWasabi.Services;
 using WalletWasabi.WabiSabi;
 using WalletWasabi.WabiSabi.Models.Serialization;
 using WalletWasabi.WebClients;
@@ -79,6 +80,9 @@ namespace WalletWasabi.Backend
 				return coordinator.Arena;
 			});
 			services.AddStartupTask<InitConfigStartupTask>();
+
+			services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+			services.AddHostedService<QueuedHostedService>();
 
 			services.AddResponseCompression();
 		}
