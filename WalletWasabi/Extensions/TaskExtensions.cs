@@ -65,6 +65,6 @@ namespace System.Threading.Tasks
 			{
 				throw new OperationCanceledException("Timed out.", innerException: e);
 			}
-		}			
+		}
 	}
 }

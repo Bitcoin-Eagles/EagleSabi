@@ -22,7 +22,7 @@ namespace WalletWasabi.Services
 
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
-			_logger.LogInformation(
+			_logger?.LogInformation(
 				$"Queued Hosted Service is running.{Environment.NewLine}" +
 				$"{Environment.NewLine}Tap W to add a work item to the " +
 				$"background queue.{Environment.NewLine}");
@@ -43,7 +43,7 @@ namespace WalletWasabi.Services
 				}
 				catch (Exception ex)
 				{
-					_logger.LogError(ex,
+					_logger?.LogError(ex,
 						"Error occurred executing {WorkItem}.", nameof(workItem));
 				}
 			}
@@ -51,7 +51,7 @@ namespace WalletWasabi.Services
 
 		public override async Task StopAsync(CancellationToken stoppingToken)
 		{
-			_logger.LogInformation("Queued Hosted Service is stopping.");
+			_logger?.LogInformation("Queued Hosted Service is stopping.");
 
 			await base.StopAsync(stoppingToken).ConfigureAwait(false);
 		}
