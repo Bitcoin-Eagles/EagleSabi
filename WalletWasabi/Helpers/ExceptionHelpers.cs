@@ -85,7 +85,7 @@ namespace WalletWasabi.Helpers
 			foreach (var task in tasks)
 			{
 				if (cancellationToken.IsCancellationRequested)
-					throw new TaskCanceledException();
+					throw new TaskCanceledException(null, null, cancellationToken);
 				try { await task.Invoke().ConfigureAwait(false); }
 				catch (AggregateException excp)
 				{

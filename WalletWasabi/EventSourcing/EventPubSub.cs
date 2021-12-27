@@ -67,12 +67,6 @@ namespace WalletWasabi.EventSourcing
 			{
 				throw;
 			}
-			catch
-			{
-				// TODO: Log and swallow exception. This is asynchronous background retriable eventually
-				// consistent so the caller doesn't really care if it fails.
-				throw;
-			}
 		}
 
 		/// <inheritdoc/>
@@ -82,9 +76,11 @@ namespace WalletWasabi.EventSourcing
 		}
 
 		/// <inheritdoc/>
-		public async Task EnqueuePublishAllAsync()
+		public async Task PublishAllInBackgroundQueueAsync()
 		{
-			await BackgroundTaskQueue.QueueBackgroundWorkItemAsync(async c => await PublishAllAsync(c).ConfigureAwait(false)).ConfigureAwait(false);
+			await BackgroundTaskQueue.QueueBackgroundWorkItemAsync(
+				async c => await PublishAllAsync(c).ConfigureAwait(false)
+			).ConfigureAwait(false);
 		}
 	}
 }
