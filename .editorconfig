@@ -15,9 +15,6 @@ trim_trailing_whitespace = true
 indent_style = tab
 indent_size = 4
 
-# Formatting - set preferred newline characters
-end_of_line = lf
-
 [*.{xaml,axaml}]
 
 indent_style = space
