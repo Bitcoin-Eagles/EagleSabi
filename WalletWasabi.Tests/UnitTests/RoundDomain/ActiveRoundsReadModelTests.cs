@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using Shouldly;
 using System.Threading.Tasks;
 using WalletWasabi.Domains.Arena.Aggregates;
@@ -5,6 +6,8 @@ using WalletWasabi.Domains.Arena.Events;
 using WalletWasabi.Domains.Arena.ReadModels;
 using WalletWasabi.EventSourcing;
 using WalletWasabi.EventSourcing.Interfaces;
+using WalletWasabi.Interfaces;
+using WalletWasabi.Services;
 using WalletWasabi.Tests.UnitTests.EventSourcing.Helpers;
 using WalletWasabi.WabiSabi.Backend.Rounds;
 using Xunit;
@@ -16,6 +19,8 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 		private const string ID_1 = "ID_1";
 		private const string ID_2 = "ID_2";
 
+		protected IBackgroundTaskQueue BackgroundTaskQueue { get; init; }
+		protected IHostedService QueuedHostedService { get; init; }
 		protected IEventRepository EventRepository { get; init; }
 		protected IPubSub PubSub { get; init; }
 		protected IEventPubSub EventPubSub { get; init; }
@@ -23,15 +28,18 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 
 		public ActiveRoundsReadModelTests()
 		{
+			BackgroundTaskQueue = new BackgroundTaskQueue();
+			QueuedHostedService = new QueuedHostedService(BackgroundTaskQueue, null!);
 			EventRepository = new InMemoryEventRepository();
 			PubSub = new PubSub();
-			EventPubSub = new EventPubSub(EventRepository, PubSub);
+			EventPubSub = new EventPubSub(EventRepository, PubSub, BackgroundTaskQueue);
 			ActiveRounds = new(EventPubSub);
 		}
 
 		public async Task InitializeAsync()
 		{
 			await ActiveRounds.Start();
+			await QueuedHostedService.StartAsync(default);
 		}
 
 		[Fact]
@@ -55,7 +63,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.Count.ShouldBe(1);
@@ -74,7 +82,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.Count.ShouldBe(1);
@@ -94,7 +102,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.Count.ShouldBe(1);
@@ -115,7 +123,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.Count.ShouldBe(1);
@@ -137,7 +145,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.Count.ShouldBe(0);
@@ -160,7 +168,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.ContainsKey(ID_1).ShouldBeTrue();
@@ -188,7 +196,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.ContainsKey(ID_1).ShouldBeTrue();
@@ -218,7 +226,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			});
 
 			// Act
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 
 			// Assert
 			ActiveRounds.Rounds.ContainsKey(ID_1).ShouldBeFalse();
@@ -236,7 +244,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 				new OutputRegistrationStartedEvent(),
 			});
 			var events = await EventRepository.ListEventsAsync(nameof(RoundAggregate), ID_1);
-			await EventPubSub.PublishAllAsync();
+			await EventPubSub.PublishAllAsync(default);
 			var oldEvent = events[1];
 
 			// Assume
@@ -252,7 +260,7 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 
 		public Task DisposeAsync()
 		{
-			return Task.CompletedTask;
+			return QueuedHostedService.StopAsync(default);
 		}
 
 		public void Dispose()
