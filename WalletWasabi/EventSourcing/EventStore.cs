@@ -131,7 +131,7 @@ namespace WalletWasabi.EventSourcing
 			if (result?.Success == true)
 			{
 				if (EventPubSub is not null)
-					await EventPubSub.EnqueuePublishAllAsync().ConfigureAwait(false);
+					await EventPubSub.PublishAllInBackgroundQueueAsync().ConfigureAwait(false);
 
 				await Published().ConfigureAwait(false); // No action
 
