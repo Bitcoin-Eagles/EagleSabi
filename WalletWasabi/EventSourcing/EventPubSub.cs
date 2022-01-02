@@ -26,14 +26,14 @@ namespace WalletWasabi.EventSourcing
 			try
 			{
 				var aggregatesEvents = await EventRepository.ListUndeliveredEventsAsync().ConfigureAwait(false);
-				await aggregatesEvents.ForEachAggregateExceptionsAsync(
+				await aggregatesEvents.ForEachAggregatingExceptionsAsync(
 					async (aggregateEvents) =>
 					{
 						if (0 < aggregateEvents.WrappedEvents.Count)
 						{
 							try
 							{
-								await aggregateEvents.WrappedEvents.ForEachAggregateExceptionsAsync(
+								await aggregateEvents.WrappedEvents.ForEachAggregatingExceptionsAsync(
 									PubSub.PublishDynamicAsync
 								).ConfigureAwait(false);
 							}

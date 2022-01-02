@@ -1,9 +1,9 @@
-using System.Collections.Generic;
-using WalletWasabi.Helpers;
-using WalletWasabi.Crypto.Groups;
-using NBitcoin.Secp256k1;
 using NBitcoin;
+using NBitcoin.Secp256k1;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using WalletWasabi.Crypto.Groups;
+using WalletWasabi.Helpers;
 
 namespace System.Linq
 {
@@ -45,7 +45,7 @@ namespace System.Linq
 		/// containing all exceptions if any. Unpacks one level of AggregateException
 		/// thrown from an action.
 		/// </summary>
-		public static void ForEachAggregateExceptions<T>(this IEnumerable<T> list, Action<T> action, string? message = null)
+		public static void ForEachAggregatingExceptions<T>(this IEnumerable<T> list, Action<T> action, string? message = null)
 		{
 			ExceptionHelpers.AggregateExceptions(list.Select(a => (Action)(() => action(a))), message);
 		}
@@ -56,7 +56,7 @@ namespace System.Linq
 		/// containing all exceptions if any. Unpacks one level of AggregateException
 		/// thrown from an action.
 		/// </summary>
-		public static async Task ForEachAggregateExceptionsAsync<T>(this IEnumerable<T> list, Func<T, Task> action, string? message = null)
+		public static async Task ForEachAggregatingExceptionsAsync<T>(this IEnumerable<T> list, Func<T, Task> action, string? message = null)
 		{
 			await ExceptionHelpers.AggregateExceptionsAsync(
 				list.Select(a => (Func<Task>)(async () => await action.Invoke(a).ConfigureAwait(false))),
