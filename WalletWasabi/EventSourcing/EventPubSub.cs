@@ -40,7 +40,7 @@ namespace WalletWasabi.EventSourcing
 								cancellationToken: cancellationToken)
 							.ConfigureAwait(false);
 						}
-						catch (TaskCanceledException)
+						catch (OperationCanceledException)
 						{
 							throw;
 						}

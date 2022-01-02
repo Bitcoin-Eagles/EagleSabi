@@ -13,7 +13,8 @@ namespace WalletWasabi.EventSourcing.Interfaces
 		/// aggregated into an AggregateException and thrown.
 		/// </summary>
 		/// <exception cref="AggregateException">any exception from subscribers are aggregated.</exception>
-		/// <exception cref="TaskCanceledException">if <paramref name="cancellationToken"/> requested cancellation</exception>
+		/// <exception cref="OperationCanceledException">if <paramref name="cancellationToken"/> requested cancellation</exception>
+		/// <exception cref="ObjectDisposedException">if <paramref name="cancellationToken"/> is disposed</exception>
 		Task PublishAllAsync(CancellationToken cancellationToken);
 
 		/// <summary>

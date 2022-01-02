@@ -57,6 +57,8 @@ namespace System.Linq
 		/// containing all exceptions if any. Unpacks one level of AggregateException
 		/// thrown from an action.
 		/// </summary>
+		/// <exception cref="OperationCanceledException">if <paramref name="cancellationToken"/> requested cancellation</exception>
+		/// <exception cref="ObjectDisposedException">if <paramref name="cancellationToken"/> is disposed</exception>
 		public static async Task ForEachAggregatingExceptionsAsync<T>(this IEnumerable<T> list, Func<T, Task> action, string? message = null, CancellationToken cancellationToken = default)
 		{
 			await ExceptionHelpers.AggregateExceptionsAsync(
