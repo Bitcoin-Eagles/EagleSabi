@@ -27,46 +27,39 @@ namespace WalletWasabi.EventSourcing
 		/// <inheritdoc/>
 		public async Task PublishAllAsync(CancellationToken cancellationToken)
 		{
-			try
-			{
-				var aggregatesEvents = await EventRepository.ListUndeliveredEventsAsync().ConfigureAwait(false);
-				await aggregatesEvents.ForEachAggregatingExceptionsAsync(
-					async (aggregateEvents) =>
+			var aggregatesEvents = await EventRepository.ListUndeliveredEventsAsync().ConfigureAwait(false);
+			await aggregatesEvents.ForEachAggregatingExceptionsAsync(
+				async (aggregateEvents) =>
+				{
+					if (0 < aggregateEvents.WrappedEvents.Count)
 					{
-						if (0 < aggregateEvents.WrappedEvents.Count)
+						try
 						{
-							try
-							{
-								await aggregateEvents.WrappedEvents.ForEachAggregatingExceptionsAsync(
-									PubSub.PublishDynamicAsync,
-									cancellationToken: cancellationToken)
-								.ConfigureAwait(false);
-							}
-							catch (TaskCanceledException)
-							{
-								throw;
-							}
-							catch
-							{
-								// TODO: move events into tombstone queue for redelivery
-								// with exponential back-off with sprinkle of random delay
-								// and then mark those events as delivered in the event store
-								// to escape this loop of infinite redelivery attempts
-								throw;
-							}
-
-							await EventRepository.MarkEventsAsDeliveredCumulativeAsync(
-								aggregateEvents.AggregateType,
-								aggregateEvents.AggregateId,
-								aggregateEvents.WrappedEvents[^1].SequenceId)
-								.ConfigureAwait(false);
+							await aggregateEvents.WrappedEvents.ForEachAggregatingExceptionsAsync(
+								PubSub.PublishDynamicAsync,
+								cancellationToken: cancellationToken)
+							.ConfigureAwait(false);
 						}
-					}, cancellationToken: cancellationToken).ConfigureAwait(false);
-			}
-			catch (TaskCanceledException)
-			{
-				throw;
-			}
+						catch (TaskCanceledException)
+						{
+							throw;
+						}
+						catch
+						{
+							// TODO: move events into tombstone queue for redelivery
+							// with exponential back-off with sprinkle of random delay
+							// and then mark those events as delivered in the event store
+							// to escape this loop of infinite redelivery attempts
+							throw;
+						}
+
+						await EventRepository.MarkEventsAsDeliveredCumulativeAsync(
+							aggregateEvents.AggregateType,
+							aggregateEvents.AggregateId,
+							aggregateEvents.WrappedEvents[^1].SequenceId)
+							.ConfigureAwait(false);
+					}
+				}, cancellationToken: cancellationToken).ConfigureAwait(false);
 		}
 
 		/// <inheritdoc/>
