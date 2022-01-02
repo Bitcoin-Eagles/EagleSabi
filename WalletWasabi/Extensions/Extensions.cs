@@ -11,10 +11,10 @@ namespace WalletWasabi.Extensions
 		/// </summary>
 		public static async Task WaitAsync(this IBackgroundTaskQueue queue, CancellationToken cancellationToken = default)
 		{
-			using var processed = new SemaphoreSlim(0);
-			var enqueue = queue.QueueBackgroundWorkItemAsync(_ => { processed.Release(); return ValueTask.CompletedTask; });
-			await Task.WhenAny(enqueue.AsTask(), Task.Delay(Timeout.Infinite, cancellationToken)).ConfigureAwait(false);
-			await processed.WaitAsync(cancellationToken).ConfigureAwait(false);
+			var processed = new TaskCompletionSource();
+			var enqueue = queue.QueueBackgroundWorkItemAsync(_ => { processed.SetResult(); return ValueTask.CompletedTask; });
+			await enqueue.AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+			await processed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 		}
 	}
 }
