@@ -20,6 +20,7 @@ namespace WalletWasabi.EventSourcing.Records
 		long SequenceId,
 		IEvent DomainEvent,
 		Guid SourceId)
+		: AggregateKey(AggregateType, AggregateId)
 	{
 		public static WrappedEvent CreateDynamic(
 			string aggregateType,
