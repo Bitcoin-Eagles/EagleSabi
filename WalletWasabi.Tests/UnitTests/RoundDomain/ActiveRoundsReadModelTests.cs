@@ -69,6 +69,27 @@ namespace WalletWasabi.Tests.UnitTests.RoundDomain
 			ActiveRounds.Rounds.Count.ShouldBe(1);
 			ActiveRounds.Rounds.ContainsKey(ID_1).ShouldBeTrue();
 			ActiveRounds.Rounds[ID_1].Phase.ShouldBe(Phase.InputRegistration);
+			ActiveRounds.Rounds[ID_1].BlameOf.ShouldBeNull();
+		}
+
+		[Fact]
+		public async Task Rounds_Single_InputRegistration_BlameOf_Async()
+		{
+			// Arrange
+			await EventRepository.AppendEventsAsync(nameof(RoundAggregate), ID_1, new IEvent[]
+			{
+				new RoundStartedEvent(new RoundParameters2(default!,default!,default!,default,default,default,default,default,default,default,default,default!){
+					BlameOf= NBitcoin.uint256.One}),
+			});
+
+			// Act
+			await EventPubSub.PublishAllAsync(default);
+
+			// Assert
+			ActiveRounds.Rounds.Count.ShouldBe(1);
+			ActiveRounds.Rounds.ContainsKey(ID_1).ShouldBeTrue();
+			ActiveRounds.Rounds[ID_1].Phase.ShouldBe(Phase.InputRegistration);
+			ActiveRounds.Rounds[ID_1].BlameOf.ShouldBe(NBitcoin.uint256.One);
 		}
 
 		[Fact]

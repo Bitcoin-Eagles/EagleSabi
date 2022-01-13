@@ -1,3 +1,4 @@
+using NBitcoin;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,25 +43,25 @@ namespace WalletWasabi.Domains.Arena.ReadModels
 
 		public Task Receive(WrappedEvent<RoundStartedEvent> message)
 		{
-			UpdatePhase(message, Phase.InputRegistration);
+			Update(message, Phase.InputRegistration, message.DomainEvent.RoundParameters?.BlameOf);
 			return Task.CompletedTask;
 		}
 
 		public Task Receive(WrappedEvent<InputsConnectionConfirmationStartedEvent> message)
 		{
-			UpdatePhase(message, Phase.ConnectionConfirmation);
+			Update(message, Phase.ConnectionConfirmation);
 			return Task.CompletedTask;
 		}
 
 		public Task Receive(WrappedEvent<OutputRegistrationStartedEvent> message)
 		{
-			UpdatePhase(message, Phase.OutputRegistration);
+			Update(message, Phase.OutputRegistration);
 			return Task.CompletedTask;
 		}
 
 		public Task Receive(WrappedEvent<SigningStartedEvent> message)
 		{
-			UpdatePhase(message, Phase.TransactionSigning);
+			Update(message, Phase.TransactionSigning);
 			return Task.CompletedTask;
 		}
 
@@ -70,13 +71,24 @@ namespace WalletWasabi.Domains.Arena.ReadModels
 			return Task.CompletedTask;
 		}
 
-		private void UpdatePhase(WrappedEvent wrappedEvent, Phase phase)
+		private void Update(WrappedEvent wrappedEvent, Phase phase, uint256? blameOf = null)
 		{
 			ImmutableInterlocked.AddOrUpdate(ref _rounds, wrappedEvent.AggregateId,
-				_ => new(phase, wrappedEvent.SequenceId),
-				(a, b) => b.SequenceId < wrappedEvent.SequenceId
-					? b with { Phase = phase, SequenceId = wrappedEvent.SequenceId }
-					: b);
+				_ => new(phase, wrappedEvent.SequenceId, blameOf ?? null),
+				(a, b) =>
+				{
+					if (b.SequenceId < wrappedEvent.SequenceId)
+					{
+						var result = b with { Phase = phase, SequenceId = wrappedEvent.SequenceId };
+						if (blameOf != null)
+							result = result with { BlameOf = blameOf };
+						return result;
+					}
+					else
+					{
+						return b;
+					}
+				});
 		}
 
 		public void Dispose()
